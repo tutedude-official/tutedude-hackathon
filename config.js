@@ -51,11 +51,11 @@ window.BUILDATHON = {
 
   /* Buildathon starts + problem statement is revealed (IST). Countdowns and reminders use this, and the
      problem statement appears on team pages at this time (must match bd_reveal() in supabase.sql). */
-  buildDay: "2026-11-21T19:00:00+05:30",
+  buildDay: "2026-11-21T19:15:00+05:30",
 
   /* The submission window (IST): it opens with the problem statement (a team can submit as soon as it's ready)
      and closes at submitBy. Must match bd_submit_from() and bd_submit_by() in supabase.sql. */
-  submitFrom: "2026-11-21T19:00:00+05:30",
+  submitFrom: "2026-11-21T19:15:00+05:30",
   submitBy: "2026-11-28T23:59:59+05:30",
 
   /* prize = the 1st prize (shown in the hero headline); prizes = 1st, 2nd, 3rd (per team) */

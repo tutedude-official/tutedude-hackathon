@@ -923,7 +923,7 @@
     const lk = locked();
     $("#lockBar").hidden = !lk;
     $("#lockBar").innerHTML = revealed() ? "<b>Teams are locked and final.</b> The problem statement is out: it's on your team page."
-      : `<b>Teams are locked and final.</b> The problem is revealed on <b>${esc(revealText())}</b>.`;
+      : `<b>Teams are locked and final.</b> The session starts at <b>7 PM</b>, and the problem is revealed on <b>${esc(revealText())}</b>.`;
     $$("[data-reg-label]").forEach((b) => { b.textContent = S.me ? "My team" : lk ? "Closed" : "Register"; });
     $$(".cta-reg").forEach((b) => { b.textContent = S.team ? "Go to my team" : S.me ? (lk ? "Go to my page" : "Create or join a team") : lk ? "Registration closed" : "Register your team"; });
     $$(".cta-find").forEach((b) => { b.hidden = !!S.team || lk; });

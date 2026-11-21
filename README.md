@@ -19,10 +19,10 @@ Students bring their own team (2 to 5 people, any mix of skills). Exclusive for 
    - **Team Building Sessions:** every morning and evening in a permanent room on TuteDude Sessions. Set the link and times in `config.js` → `teamBuilding`.
    - **"Find your team on TuteDude" video** (the Buildathon tab in Sessions): a "How to find teammates" button in the hero and a video card on the team board, for students who still need teammates, until teams lock. It plays in a pop-up (the 720p file, 5.6 MB). Set the files and the Buildathon tab link in `config.js` → `findVideo`; leave `video` empty to hide it.
 4. **Team page.** Members with WhatsApp buttons ("Copy all numbers" for a group), added teammates, the team link (copy / send on WhatsApp), and for the leader: rename, add or remove teammates, remove a member, open or close the team, make a new link (the old one stops working). Anyone can leave until teams lock (a leader who leaves hands over to the next member).
-5. **Problem statement.** At **21 Nov, 7 PM** it appears on the team page of every team with 2+ people (see "Publish the problem statement").
+5. **Problem statement.** At **21 Nov, 7:15 PM** it appears on the team page of every team with 2+ people (see "Publish the problem statement").
 6. **Lost the team page?** "Already registered on another phone or browser? Get back to your team" brings it back with the same WhatsApp number and email.
 7. **Prizes.** For the top 3 teams: 🥇 ₹5,000, 🥈 ₹3,000 and 🥉 ₹2,000 (₹10,000 total, shown on the page). Change them in `config.js` (`prize`, `prizes`).
-8. **Dates.** Teams lock **20 Nov, 11:59 PM IST**. The problem statement drops **21 Nov, 7 PM IST**. Live countdowns (flip-calendar style).
+8. **Dates.** Teams lock **20 Nov, 11:59 PM IST**. The problem statement drops **21 Nov, 7:15 PM IST**. Live countdowns (flip-calendar style).
 
 ### Rules the database enforces
 - 2 to 5 people per team (registered members + added teammates). A team of 1 can't take part.
@@ -137,7 +137,7 @@ Before the first WhatsApp button opens (the community, a teammate, the team link
 
 ## Project submission
 Teams submit on this same site, from their team page.
-- **When:** any time in the submission window, from `submitFrom` to `submitBy` in config.js: from the problem statement (Sat, 21 Nov 2026, 7 PM IST) to Sat, 28 Nov 2026, 11:59 PM IST. A team submits as soon as its project is ready; it doesn't wait for the last day. If you change either time, change `bd_submit_from()` / `bd_submit_by()` in supabase.sql too and run the file again.
+- **When:** any time in the submission window, from `submitFrom` to `submitBy` in config.js: from the problem statement (Sat, 21 Nov 2026, 7:15 PM IST) to Sat, 28 Nov 2026, 11:59 PM IST. A team submits as soon as its project is ready; it doesn't wait for the last day. If you change either time, change `bd_submit_from()` / `bd_submit_by()` in supabase.sql too and run the file again.
 - **Who:** the team leader, **once**. A submission can't be edited. The team must have at least 2 people.
 - **What:** project name, 2 to 3 lines about it, project link (required), website link and promo video link (asked for, can be left empty after a warning).
 - **Organisers:** panel → **Submissions** shows every project with its links and the leader's contact, **Download CSV** exports them, and **Reopen** removes one submission so that leader can submit again (the team gets a notification).
@@ -183,12 +183,12 @@ Open `https://rajnishpark03.github.io/tutedude-hackathon/admin.html`. It isn't l
   - **Remove** a fake or outsider registration completely (their team passes to the next member), or take an added teammate off a team.
   - **Rename** a team, or **Notify team**.
   - **Export CSV:** one row per person, including added teammates (`signedUp` = no). Cells are protected against spreadsheet formulas.
-- **Problem statement:** write it, see a preview and save. Students see it at 21 Nov, 7 PM, with no SQL needed.
+- **Problem statement:** write it, see a preview and save. Students see it at 21 Nov, 7:15 PM, with no SQL needed.
 - **Notify:** send a site and phone notification to everyone, people in teams of 2+, people alone in their team, people not in a team, or one team. The panel shows how many people will get it before you send.
 - **Activity:** recent creations, joins, leaves, removals, renames and moves.
 
 ## Publish the problem statement
-Easiest: the **Problem statement** tab in the organiser panel. Or run this in the SQL Editor any time before 7 PM on 21 Nov. Students see it on their team page from 7 PM, and a notification goes out at 7 PM.
+Easiest: the **Problem statement** tab in the organiser panel. Or run this in the SQL Editor any time before 7:15 PM on 21 Nov. Students see it on their team page from 7:15 PM, and a notification goes out at 7:15 PM.
 ```sql
 insert into bd_settings (key, value) values
   ('problem_statement', 'Write the problem statement here. Line breaks are kept; links become clickable.'),
@@ -197,10 +197,10 @@ on conflict (key) do update set value = excluded.value;
 ```
 It is never on the public page. Only teams of 2+ people see it.
 
-**On WhatsApp too.** At **7:01 PM on 21 Nov** everyone in a team of 2+ gets it on WhatsApp through WATI, with the same Utility template as the reminders (`buildathon_team_status`: "Hi {name}, an update on your TuteDude Buildathon registration: {message} Your team link: {link}"). Only when the problem statement is saved by then.
+**On WhatsApp too.** At **7:16 PM on 21 Nov** everyone in a team of 2+ gets it on WhatsApp through WATI, with the same Utility template as the reminders (`buildathon_team_status`: "Hi {name}, an update on your TuteDude Buildathon registration: {message} Your team link: {link}"). Only when the problem statement is saved by then.
 - **The message:** "The problem statement is out: …" with the statement on one line (WhatsApp allows no line breaks in a template variable), the brief link if there is one, and "Read it all on your team page and start building with your team." It's at most 600 characters, so a longer statement is cut with "…".
-- **Never before 7 PM:** the database refuses to send it earlier, from the schedule or the panel.
-- **Once:** the 7:01 PM run sends it once. In the panel (**Problem statement → Send it on WhatsApp**) an organiser sees how many people get it and the exact message, can send it after saving it later, or send it again. The panel shows what WATI answered.
+- **Never before 7:15 PM:** the database refuses to send it earlier, from the schedule or the panel.
+- **Once:** the 7:16 PM run sends it once. In the panel (**Problem statement → Send it on WhatsApp**) an organiser sees how many people get it and the exact message, can send it after saving it later, or send it again. The panel shows what WATI answered.
 
 ## After 20 Nov: final teams
 Easiest: **Export CSV** in the organiser panel. Or run this in the SQL Editor, then click **Export → CSV**:

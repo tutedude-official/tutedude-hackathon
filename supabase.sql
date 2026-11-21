@@ -28,11 +28,11 @@ create or replace function bd_label(d text) returns text language sql immutable 
 -- ' (Developer)' after a name in team messages; nothing when no skill was picked
 create or replace function bd_tag(d text) returns text language sql immutable as $$ select case when d is null or d = 'other' then '' else ' (' || bd_label(d) || ')' end $$;
 -- the problem statement appears on team pages at this time (config.js buildDay)
-create or replace function bd_reveal() returns timestamptz language sql immutable as $$ select timestamptz '2026-11-21 19:00:00+05:30' $$;
+create or replace function bd_reveal() returns timestamptz language sql immutable as $$ select timestamptz '2026-11-21 19:15:00+05:30' $$;
 -- last moment to submit the project: one week of building (must match submitBy in config.js)
 -- projects are submitted in this window only: it opens with the problem statement (submit as soon as it's ready)
 -- and closes at bd_submit_by()
-create or replace function bd_submit_from() returns timestamptz language sql immutable as $$ select timestamptz '2026-11-21 19:00:00+05:30' $$;
+create or replace function bd_submit_from() returns timestamptz language sql immutable as $$ select timestamptz '2026-11-21 19:15:00+05:30' $$;
 create or replace function bd_submit_by() returns timestamptz language sql immutable as $$ select timestamptz '2026-11-28 23:59:59+05:30' $$;
 
 do $$ begin create extension if not exists pg_net; exception when others then raise notice 'pg_net not available: phone notifications are off'; end $$;
@@ -1036,7 +1036,7 @@ begin
     get diagnostics n = row_count;
   elsif p_kind = 'reveal-soon' then
     insert into notifications (person_id, title, body, tag, url)
-    select m.person_id, '🚀 Problem statement in 1 hour', 'Meet your team on your TuteDude session. The problem statement appears on your team page at 7 PM.',
+    select m.person_id, '🚀 Problem statement in 1 hour', 'Meet your team on your TuteDude session. The problem statement appears on your team page at ' || to_char(bd_reveal() at time zone 'Asia/Kolkata', 'FMHH12:MI AM') || '.',
            'reveal-' || t.id, '#board'
     from teams t join members m on m.team_id = t.id where t.size >= bd_min();
     get diagnostics n = row_count;
@@ -1540,7 +1540,7 @@ grant execute on function admin_whatsapp(boolean), admin_whatsapp_status() to au
 
 -- ---------- The problem statement on WhatsApp (WATI, the same Utility template) ----------
 -- To everyone in a team of 2+ (the teams that take part), never before bd_reveal(). It goes out by itself
--- at 7:01 PM IST on reveal day (pg_cron, below) when the problem statement is saved, and from the panel
+-- at 7:16 PM IST on reveal day (pg_cron, below) when the problem statement is saved, and from the panel
 -- (Problem statement → Send it on WhatsApp). Once only, unless an organiser sends it again.
 -- WhatsApp allows one paragraph in a template variable (600 characters here): a longer statement is cut,
 -- and the message says to read all of it on the team page.
@@ -1825,8 +1825,8 @@ grant execute on function admin_whoami(), admin_overview(), admin_teams(text, te
 -- ---------- Reminder schedule (pg_cron runs in UTC; IST = UTC + 5:30) ----------
 --   every day 1:00 PM + 8:00 PM IST until the last day: "your team has only you" (teams of 1)
 --   20 Nov 10:00 AM + 8:00 PM IST: "teams lock tonight" (teams with room left, people without a team)
---   21 Nov 6:00 PM IST: "problem statement in 1 hour"   ·   21 Nov 7:00 PM IST: "problem statement is out" (teams of 2+)
---   21 Nov 7:01 PM IST: the problem statement on WhatsApp (teams of 2+, once)
+--   21 Nov 6:00 PM IST: "problem statement in 1 hour"   ·   21 Nov 7:15 PM IST: "problem statement is out" (teams of 2+)
+--   21 Nov 7:16 PM IST: the problem statement on WhatsApp (teams of 2+, once)
 do $$ begin
   create extension if not exists pg_cron with schema pg_catalog;
   perform cron.schedule('buildathon-push-clean', '*/15 * * * *', 'select public.bd_push_clean()');
@@ -1837,8 +1837,8 @@ do $$ begin
   perform cron.schedule('buildathon-lock-soon-pm', '30 14 20 11 *', 'select public.bd_remind(''lock-soon'')');
   perform cron.unschedule(jobname) from cron.job where jobname like 'buildathon-session-%';
   perform cron.schedule('buildathon-reveal-soon', '30 12 21 11 *', 'select public.bd_remind(''reveal-soon'')');
-  perform cron.schedule('buildathon-reveal-now', '30 13 21 11 *', 'select public.bd_remind(''reveal-now'')');
-  perform cron.schedule('buildathon-whatsapp-problem', '31 13 21 11 *', 'select public.bd_whatsapp_problem()');   -- 21 Nov 7:01 PM IST: the problem statement on WhatsApp
+  perform cron.schedule('buildathon-reveal-now', '45 13 21 11 *', 'select public.bd_remind(''reveal-now'')');
+  perform cron.schedule('buildathon-whatsapp-problem', '46 13 21 11 *', 'select public.bd_whatsapp_problem()');   -- 21 Nov 7:16 PM IST: the problem statement on WhatsApp
   perform cron.schedule('buildathon-whatsapp-answers', '*/5 * * * *', 'select public.bd_wa_cache()');   -- keep WATI's answers (Overview → Messages sent)
 exception when others then
   raise notice 'pg_cron not available, reminder notifications are off: %', sqlerrm;
