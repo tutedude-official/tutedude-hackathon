@@ -47,7 +47,7 @@ window.BUILDATHON = {
   /* Team formation window (IST). After teamDeadline the board locks and teams are final.
      If you change teamDeadline, change bd_deadline() in supabase.sql too and run it again. */
   boardOpens: "2026-11-12T00:00:00+05:30",
-  teamDeadline: "2026-11-21T13:00:00+05:30",
+  teamDeadline: "2026-11-20T23:59:59+05:30",
 
   /* Buildathon starts + problem statement is revealed (IST). Countdowns and reminders use this, and the
      problem statement appears on team pages at this time (must match bd_reveal() in supabase.sql). */

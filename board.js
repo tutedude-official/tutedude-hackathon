@@ -509,10 +509,16 @@
     // vendor/supabase.js ships with the site (loaded in index.html). No CDN: the page's security policy allows only its own scripts.
     if (!(window.supabase && window.supabase.createClient)) fail("Couldn't load the page. Refresh it.");
     const sb = window.supabase.createClient(cfg.url, cfg.anonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "pkce" } });
+    // a one-time sign-in link an organiser made for a test account (…/#session=<refresh token>): sign in with it,
+    // then drop it from the address bar. The part after # never reaches any server.
+    const linkToken = (location.hash.match(/[#&]session=([A-Za-z0-9_-]{8,500})/) || [])[1];
+    const ready = !linkToken ? Promise.resolve()
+      : sb.auth.refreshSession({ refresh_token: linkToken }).catch(() => null).then(() => history.replaceState(null, "", location.pathname + "#board"));
     // network blips, timeouts and lock waits under heavy load are retried once, then explained in plain words
     const transient = (m) => /timeout|timed out|deadlock|could not serialize|fetch|network|load failed|503|502|504/i.test(m || "");
     const rpc = async (fn, args, tries = 2) => {
       let res;
+      await ready;
       try { res = await sb.rpc(fn, args || {}); }
       catch (e) { res = { error: { message: (e && e.message) || "network error" } }; }
       if (!res.error) return res.data;
@@ -553,6 +559,7 @@
         });
       },
       async ensureUser() {
+        await ready;
         const { data } = await sb.auth.getSession();
         if (data && data.session) return toUser(data.session.user);
         if (login !== "anonymous") fail("Please sign in first.");
