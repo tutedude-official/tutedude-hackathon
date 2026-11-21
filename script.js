@@ -81,7 +81,7 @@
     else {
       // build week → submission day → over
       const from = Date.parse(C.submitFrom), by = Date.parse(C.submitBy), ur2 = $(".u-reveal");
-      const live = !isNaN(from) && now < from ? ["Build week is on! Submissions open in", from] : !isNaN(by) && now <= by ? ["Submission day! Closes in", by]
+      const live = !isNaN(from) && now < from ? ["Build week is on! Submissions open in", from] : !isNaN(by) && now <= by ? ["Submissions are open! Last day to submit in", by]
         : [isNaN(by) ? "The Buildathon is live!" : "Submissions are closed. Winners coming soon.", NaN];
       if (ur2) ur2.hidden = true;
       $("#cdLabel").textContent = "The Buildathon is live!";

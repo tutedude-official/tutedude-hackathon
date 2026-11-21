@@ -137,7 +137,7 @@ Before the first WhatsApp button opens (the community, a teammate, the team link
 
 ## Project submission
 Teams submit on this same site, from their team page.
-- **When:** only inside the submission window, after the build week: from `submitFrom` to `submitBy` in config.js (Sat, 28 Nov 2026, 12:00 AM to 11:59 PM IST). Before it opens, the team page shows "Submission day: Sat, 28 Nov". If you change either time, change `bd_submit_from()` / `bd_submit_by()` in supabase.sql too and run the file again.
+- **When:** any time in the submission window, from `submitFrom` to `submitBy` in config.js: from the problem statement (Sat, 21 Nov 2026, 7 PM IST) to Sat, 28 Nov 2026, 11:59 PM IST. A team submits as soon as its project is ready; it doesn't wait for the last day. If you change either time, change `bd_submit_from()` / `bd_submit_by()` in supabase.sql too and run the file again.
 - **Who:** the team leader, **once**. A submission can't be edited. The team must have at least 2 people.
 - **What:** project name, 2 to 3 lines about it, project link (required), website link and promo video link (asked for, can be left empty after a warning).
 - **Organisers:** panel → **Submissions** shows every project with its links and the leader's contact, **Download CSV** exports them, and **Reopen** removes one submission so that leader can submit again (the team gets a notification).

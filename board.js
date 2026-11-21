@@ -1084,8 +1084,8 @@
         Submissions are open on that day only, until <b>${esc(submitTimeText())}</b>.</p></div>`;
     if (!submitOpen()) return `<div class="submit-card closed"><p class="kicker">${ic("lock")} Submissions are closed</p><p>Your team didn't submit a project before ${esc(submitByText())}.</p></div>`;
     return `<div class="submit-card"><p class="kicker">${ic("rocket")} Submit your project</p>
-      <p>${lead ? "Submissions are open today. Submit your project here: project link, website, promo video and a short description." : `Submissions are open today. ${esc(first(leader))}, your leader, submits the project here.`}
-        Closes at <b>${esc(submitByText())}</b>. Only one submission, and it can't be changed.</p>
+      <p>${lead ? "Submissions are open. Submit your project here as soon as it's ready: project link, website, promo video and a short description." : `Submissions are open. ${esc(first(leader))}, your leader, submits the project here as soon as it's ready.`}
+        You don't have to wait for the last day: it closes at <b>${esc(submitByText())}</b>. Only one submission, and it can't be changed.</p>
       ${lead ? `<span class="row-btns"><button class="btn btn-sm" type="button" data-act="submit-open">Submit project</button></span>` : ""}</div>`;
   }
 
@@ -1897,6 +1897,7 @@
     if (submitEarly()) { toast("Submissions open on " + submitDayText() + ".", true); return; }
     if (!submitOpen()) { toast("Submissions are closed.", true); return; }
     $("#subKicker").textContent = "Submit by " + submitByText();
+    $("#subUntil").textContent = submitByText();
     $("#sSure").checked = false;
     showErr("#subErr", "");
     openDlg(subDlg);
@@ -1912,8 +1913,10 @@
     if (p.site && !urlOk(p.site)) return showErr("#subErr", "The website link doesn't look right. Paste the full link, or leave it empty.");
     if (p.video && !urlOk(p.video)) return showErr("#subErr", "The video link doesn't look right. Paste the full link, or leave it empty.");
     if (!$("#sSure").checked) return showErr("#subErr", "Tick the box: a submission can't be changed.");
+    // one last check: a submission is final, and there is time until the deadline
     const missing = [!p.site && "website link", !p.video && "promo video link"].filter(Boolean);
-    if (missing.length && !confirm(`You haven't added the ${missing.join(" or the ")}. You can't add it later. Submit anyway?`)) return;
+    if (!confirm(`Are you sure you've finished building your app or website?\n\nYou can submit only once, and it can't be changed afterwards. You still have time until ${submitByText()}.`
+      + (missing.length ? `\n\nYou haven't added the ${missing.join(" or the ")}, and you can't add it later.` : "") + "\n\nSubmit now?")) return;
     const btn = $("#subSubmit");
     btn.disabled = true;
     try {
