@@ -1646,8 +1646,10 @@ grant execute on function admin_whatsapp_problem(boolean, boolean), admin_whatsa
 -- The WhatsApp sends kept in bd_settings, by kind (the latest of each).
 create or replace function bd_wa_kinds() returns table (key text, what text)
 language sql immutable as $$
-  values ('whatsapp_live_last', '“We go live at 7 PM” announcement'), ('whatsapp_problem_last', 'The problem statement'),
-         ('whatsapp_last', 'Latest WhatsApp reminder / new-team message') $$;
+  values ('whatsapp_live_last', '“We go live at 7 PM” announcement'), ('whatsapp_time_last', '“Problem statement at 7:15 PM” update'),
+         ('whatsapp_session_last', '“Join the live session at 7 PM” steps (teams of 2+)'),
+         ('whatsapp_session_rest_last', '“Join the live session at 7 PM” steps (everyone else)'),
+         ('whatsapp_problem_last', 'The problem statement'), ('whatsapp_last', 'Latest WhatsApp reminder / new-team message') $$;
 -- What WATI said about one send: {accepted, failed, done}. pg_net keeps answers for about 6 hours,
 -- so bd_wa_cache() writes the totals into the send itself once every answer is in.
 create or replace function bd_wa_answer(l jsonb) returns jsonb
