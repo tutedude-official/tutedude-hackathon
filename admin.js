@@ -163,7 +163,25 @@
         ${bars("People by skill", skills)}
         ${bars("Teams by size", sizes)}
         ${bars("Registrations per day (14 days)", daily)}
-      </div>`;
+      </div>
+      <h3 class="adm-sub">Messages sent</h3>
+      <ol class="adm-sent" id="sentList"><li class="muted">Loading…</li></ol>`;
+    loadSent();
+  }
+
+  // every message sent to many people: WhatsApp (with WATI's answer) and site + phone notifications
+  async function loadSent() {
+    let list;
+    try { list = await rpc("admin_sent_log"); }
+    catch (e) { $("#sentList").innerHTML = `<li class="muted">${esc(e.message)}</li>`; return; }
+    const wa = (s) => !s.done ? (s.lost ? "WATI's answer is no longer stored" : "waiting for WATI…")
+      : `<span class="${s.failed ? "warn" : "yes"}">✓ WATI accepted ${num(s.accepted)}${s.failed ? `, failed ${num(s.failed)}` : ", failed 0"}</span>`;
+    $("#sentList").innerHTML = (list || []).length ? list.map((s) => `<li>
+        <span class="when">${esc(fmt(s.at))}</span>
+        <span class="ch ${s.channel === "whatsapp" ? "ch-wa" : "ch-site"}">${s.channel === "whatsapp" ? "WhatsApp" : "Site + phone"}</span>
+        <span class="what"><b>${esc(s.what)}</b>${s.body ? `<small>${esc(s.body)}</small>` : ""}
+          <small>${num(s.people)} ${s.people === 1 ? "person" : "people"}${s.channel === "whatsapp" ? " · " + wa(s) : ""}</small></span></li>`).join("")
+      : `<li class="muted">Nothing sent yet.</li>`;
   }
 
   /* ---------- teams ---------- */
@@ -286,7 +304,43 @@
     $("#probWhen").innerHTML = p.live ? `<b>It's live:</b> students in teams of 2+ see it now.`
       : `Students see it on their team page from <b>${esc(fmt(p.reveal))}</b> (teams of 2+). It's never on the public page.`;
     previewProblem();
+    loadProblemWa();
   }
+
+  // the problem statement on WhatsApp: who gets it, the exact message, and what WATI said
+  let probWaTimer = null;
+  async function loadProblemWa() {
+    clearTimeout(probWaTimer);
+    try {
+      const [r, st] = await Promise.all([rpc("admin_whatsapp_problem", { p_dry_run: true }), rpc("admin_whatsapp_problem_status")]);
+      $("#probWaCount").textContent = `${num(r.count)} ${r.count === 1 ? "person is" : "people are"} in teams of 2 or more and ${r.count === 1 ? "gets" : "get"} it.`
+        + (r.live ? "" : ` It can go out from ${fmt(r.reveal)}.`);
+      $("#probWaMsg").hidden = !r.message;
+      $("#probWaMsg").textContent = r.message ? `Hi (first name), an update on your TuteDude Buildathon registration: ${r.message} Your team link: (their team link). Team TuteDude` : "";
+      $("#probWaSend").disabled = !r.count || !r.live || !r.message || !st.ready;
+      $("#probWaSend").textContent = st.at ? "Send it on WhatsApp again" : "Send it on WhatsApp now";
+      const when = st.at ? new Date(st.at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "";
+      $("#probWaStatus").textContent = !st.ready ? "WhatsApp is not set up yet: see “WhatsApp reminder (WATI)” in README.md."
+        : !r.message ? "Save the problem statement first."
+        : !st.at ? "Not sent on WhatsApp yet."
+        : !st.done ? `Sent ${when} to ${num(st.count)} people: waiting for WATI…`
+        : `Sent ${when}: WATI accepted ${num(st.accepted)}${st.failed ? `, refused ${num(st.failed)}` : ""}.${st.error ? " " + st.error : ""}`;
+      if (st.at && !st.done && S.tab === "problem") probWaTimer = setTimeout(loadProblemWa, 4000);
+    } catch (e) { $("#probWaStatus").textContent = e.message; }
+  }
+  $("#probWaSend").addEventListener("click", async () => {
+    showErr("#probWaErr", "");
+    const btn = $("#probWaSend");
+    btn.disabled = true;
+    try {
+      const r = await rpc("admin_whatsapp_problem", { p_dry_run: true });
+      const again = !!r.sent;
+      if (!confirm(`${again ? "It already went out once. Send it again" : "Send the problem statement"} on WhatsApp to ${num(r.count)} ${r.count === 1 ? "person" : "people"}?`)) return;
+      const sent = await rpc("admin_whatsapp_problem", { p_dry_run: false, p_again: again });
+      toast(`Sending the problem statement to ${num(sent.count)} ${sent.count === 1 ? "person" : "people"} on WhatsApp.`);
+    } catch (err) { showErr("#probWaErr", err.message); }
+    finally { btn.disabled = false; loadProblemWa(); }
+  });
   $("#pText").addEventListener("input", previewProblem);
   $("#pLink").addEventListener("input", previewProblem);
   $("#probForm").addEventListener("submit", async (e) => {
@@ -294,7 +348,7 @@
     showErr("#probErr", "");
     const btn = $("#probForm button[type=submit]");
     btn.disabled = true;
-    try { await rpc("admin_set_problem", { p_text: $("#pText").value, p_link: $("#pLink").value }); toast("Problem statement saved."); }
+    try { await rpc("admin_set_problem", { p_text: $("#pText").value, p_link: $("#pLink").value }); toast("Problem statement saved."); loadProblemWa(); }
     catch (err) { showErr("#probErr", err.message); }
     btn.disabled = false;
   });

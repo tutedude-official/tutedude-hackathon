@@ -22,7 +22,7 @@ Students bring their own team (2 to 5 people, any mix of skills). Exclusive for 
 5. **Problem statement.** At **21 Nov, 7 PM** it appears on the team page of every team with 2+ people (see "Publish the problem statement").
 6. **Lost the team page?** "Already registered on another phone or browser? Get back to your team" brings it back with the same WhatsApp number and email.
 7. **Prizes.** For the top 3 teams: 🥇 ₹5,000, 🥈 ₹3,000 and 🥉 ₹2,000 (₹10,000 total, shown on the page). Change them in `config.js` (`prize`, `prizes`).
-8. **Dates.** Teams lock **21 Nov, 1:00 PM IST** (moved from 20 Nov, 11:59 PM). The problem statement drops **21 Nov, 7 PM IST**. Live countdowns (flip-calendar style).
+8. **Dates.** Teams lock **20 Nov, 11:59 PM IST**. The problem statement drops **21 Nov, 7 PM IST**. Live countdowns (flip-calendar style).
 
 ### Rules the database enforces
 - 2 to 5 people per team (registered members + added teammates). A team of 1 can't take part.
@@ -105,7 +105,7 @@ Without a sender, notifications show only while the site is open. With it, they 
 ## WhatsApp reminder (WATI)
 People who are **alone in their team** get a WhatsApp message through WATI: get your teammates in before teams lock, or the team is out. Nobody else gets it.
 - **When:** by itself once a day at **1 PM IST** until teams lock (pg_cron job `buildathon-whatsapp-solo-1pm`). An organiser can also send it right away: panel → **Notify → WhatsApp reminder**. The panel shows how many people get it and what WATI answered.
-- **Until when:** from 18 Nov, every day at 1 PM; the last one goes out on 20 Nov at 1 PM (on 21 Nov the 1 PM run comes right at the lock, so it sends nothing). After teams lock (21 Nov, 1:00 PM) nothing is sent, so nothing goes out after the problem statement either.
+- **Until when:** from 18 Nov, every day at 1 PM; the last one goes out on 20 Nov at 1 PM. After teams lock (20 Nov, 11:59 PM) nothing is sent, so nothing goes out after the problem statement either.
 - **Random message:** the template is `buildathon_team_status` (Utility, approved 17 Nov 2026). Its `{{message}}` is one of the lines in `MESSAGES` at the top of `push-server/api/whatsapp.js`, picked at random for each person: a plain status update (alone in the team, add a teammate, or no prize and no certificate). Keep the lines factual, without a hard sell, or WhatsApp can move the template to Marketing or pause it.
 - **How it runs:** the database (`bd_whatsapp_solo()`) calls `push-server/api/whatsapp.js` on Vercel (project `buildathon-notify`, https://buildathon-notify.vercel.app/api/whatsapp), which calls WATI. The WATI token lives only on Vercel.
 
@@ -197,7 +197,12 @@ on conflict (key) do update set value = excluded.value;
 ```
 It is never on the public page. Only teams of 2+ people see it.
 
-## After 21 Nov, 1 PM: final teams
+**On WhatsApp too.** At **7:01 PM on 21 Nov** everyone in a team of 2+ gets it on WhatsApp through WATI, with the same Utility template as the reminders (`buildathon_team_status`: "Hi {name}, an update on your TuteDude Buildathon registration: {message} Your team link: {link}"). Only when the problem statement is saved by then.
+- **The message:** "The problem statement is out: …" with the statement on one line (WhatsApp allows no line breaks in a template variable), the brief link if there is one, and "Read it all on your team page and start building with your team." It's at most 600 characters, so a longer statement is cut with "…".
+- **Never before 7 PM:** the database refuses to send it earlier, from the schedule or the panel.
+- **Once:** the 7:01 PM run sends it once. In the panel (**Problem statement → Send it on WhatsApp**) an organiser sees how many people get it and the exact message, can send it after saving it later, or send it again. The panel shows what WATI answered.
+
+## After 20 Nov: final teams
 Easiest: **Export CSV** in the organiser panel. Or run this in the SQL Editor, then click **Export → CSV**:
 ```sql
 select t.name as team, t.code, t.size, p.name, p.domain, p.phone, p.email, (t.leader_id = p.id) as leader, true as signed_up

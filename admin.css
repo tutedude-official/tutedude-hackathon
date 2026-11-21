@@ -78,6 +78,19 @@ body.adm { background: var(--cream); min-height: 100vh; }
 .adm-listed { border-style: dashed; background: var(--cream); }
 /* Notify → teams of one → teams of 5: the preview */
 .adm-merge { max-height: 320px; overflow: auto; padding-left: 22px; display: grid; gap: 4px; font-size: 14px; overflow-wrap: anywhere; }
+.adm-wa-msg { margin: 0; padding: 10px 12px; background: var(--tint); border: 1.5px solid var(--line); border-radius: 12px; font-size: 14px; overflow-wrap: anywhere; }
+.adm-sent { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.adm-sent li { display: grid; grid-template-columns: 130px 110px minmax(0, 1fr); gap: 4px 12px; align-items: start; padding: 10px 12px; background: var(--paper); border: 1.5px solid var(--line); border-radius: 12px; font-size: 14px; }
+.adm-sent li.muted { display: block; }
+.adm-sent .when { color: var(--muted); }
+.adm-sent .ch { justify-self: start; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.adm-sent .ch-wa { background: #e3f5ea; color: #13663a; }
+.adm-sent .ch-site { background: var(--tint); color: var(--purple); }
+.adm-sent .what { display: grid; gap: 2px; overflow-wrap: anywhere; }
+.adm-sent .what small { color: var(--muted); }
+.adm-sent .yes { color: var(--green); font-weight: 700; }
+.adm-sent .warn { color: var(--danger); font-weight: 700; }
+@media (max-width: 640px) { .adm-sent li { grid-template-columns: auto 1fr; } .adm-sent .what { grid-column: 1 / -1; } }
 
 /* design QA: phones */
 .adm-log li { grid-template-columns: 120px 160px minmax(0, 1fr); }
