@@ -131,7 +131,7 @@
     S.tab = tab;
     $$(".adm-tabs .tab").forEach((b) => { const on = b.dataset.tab === tab; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
     $$(".adm-pane").forEach((p) => { p.hidden = p.id !== "pane-" + tab; });
-    ({ overview: loadOverview, teams: () => loadTeams(true), problem: loadProblem, notify: () => { countAudience(); loadWhatsapp(); loadMerge(); }, subs: loadSubs, activity: loadActivity }[tab] || (() => {}))();
+    ({ overview: loadOverview, teams: () => { loadTeams(true); loadLate(); }, problem: loadProblem, notify: () => { countAudience(); loadWhatsapp(); loadMerge(); }, subs: loadSubs, activity: loadActivity }[tab] || (() => {}))();
   }
 
   /* ---------- overview ---------- */
@@ -352,6 +352,30 @@
     catch (err) { showErr("#probErr", err.message); }
     btn.disabled = false;
   });
+
+  /* ---------- after the lock: teams of 2 open to new members ---------- */
+  async function loadLate() {
+    try {
+      const r = await rpc("admin_late_teams", { p_dry_run: true });
+      $("#lateCount").textContent = `${num(r.open)} ${r.open === 1 ? "team is" : "teams are"} open now` + (r.teamsOf2 ? ` · ${num(r.teamsOf2)} more ${r.teamsOf2 === 1 ? "team has" : "teams have"} 2 people` : "");
+      $("#lateOpenBtn").disabled = !r.teamsOf2;
+      $("#lateCloseBtn").disabled = !r.open;
+    } catch (e) { $("#lateCount").textContent = e.message; }
+  }
+  async function setLate(open) {
+    showErr("#lateErr", "");
+    const btn = $(open ? "#lateOpenBtn" : "#lateCloseBtn");
+    if (!confirm(open ? "Open every team of 2 people again? New students can join them with the team link, and leaders can add teammates (up to 5)."
+      : "Close all reopened teams? Nobody new can join them after this.")) return;
+    btn.disabled = true;
+    try {
+      const r = await rpc("admin_late_teams", { p_open: open });
+      toast(open ? `${num(r.changed)} ${r.changed === 1 ? "team is" : "teams are"} open to new members.` : `${num(r.changed)} ${r.changed === 1 ? "team" : "teams"} closed to new members.`);
+    } catch (e) { showErr("#lateErr", e.message); }
+    loadLate();
+  }
+  $("#lateOpenBtn").addEventListener("click", () => setLate(true));
+  $("#lateCloseBtn").addEventListener("click", () => setLate(false));
 
   /* ---------- notify ---------- */
   async function countAudience() {

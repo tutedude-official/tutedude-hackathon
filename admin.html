@@ -67,6 +67,13 @@
       <div class="adm-bar"><h2 class="h3">Teams</h2>
         <span class="row-btns"><button class="btn btn-sm btn-ghost" type="button" data-act="recheck" title="Ask TuteDude again about emails it couldn't answer for (20 at a time)">↻ Re-check TuteDude emails</button>
           <button class="btn btn-sm btn-ghost" type="button" data-act="export">⬇ Export CSV</button></span></div>
+      <div class="form adm-card" id="lateCard">
+        <p><b>Teams of 2: open to new members</b> · <span id="lateCount">…</span></p>
+        <p class="form-note">Teams are locked. Teams with exactly 2 people can be opened again: new students register and join with the team link, and the leader can add teammates, up to 5. Nothing else unlocks (no leaving, renaming or new teams). They stay open until you close them here.</p>
+        <p class="form-error" id="lateErr" role="alert" hidden></p>
+        <span class="row-btns"><button class="btn btn-sm" type="button" id="lateOpenBtn">Open teams of 2</button>
+          <button class="btn btn-sm btn-ghost" type="button" id="lateCloseBtn">Close the reopened teams</button></span>
+      </div>
       <div class="adm-filters">
         <div class="adm-chips" id="teamFilters">
           <button class="chip on" type="button" data-filter="all">All</button>

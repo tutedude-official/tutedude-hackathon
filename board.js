@@ -671,13 +671,21 @@
     return m ? cleanCode(m[1]) : "";
   }
   function clearJoin() { if (/join=/.test(location.hash + location.search)) history.replaceState(null, "", location.pathname); }
-  function openJoin(code) {
+  async function openJoin(code) {
     clearJoin();
     if (S.team) {
       if (cleanCode(S.team.code) === code) toast(`You're already in ${S.team.name}.`);
       else toast(`You're already in ${S.team.name}. To join another team, leave ${S.team.name} first (at the bottom of your team page).`, true);
       $("#board").scrollIntoView({ behavior: "smooth" });
       return;
+    }
+    reg.late = false;
+    // after the lock: only a team the organisers opened again (supabase.sql: teams.late_open) takes new members
+    if (locked()) {
+      let info = null;
+      try { await whenReady(); info = await S.be.teamByCode(code); } catch (e) { console.warn(e); }
+      if (!info || !info.lateOpen) { toast("Teams are locked. Registration is closed.", true); return; }
+      reg.late = true;
     }
     openRegister("join", code);
   }
@@ -1113,7 +1121,7 @@
   // registered, but not in a team (they left, or the leader removed them)
   function noTeamHtml() {
     if (locked()) {
-      return `<div class="session-card warn"><div><h4>You're not in a team</h4><p>Teams are locked. If you think this is a mistake, message the organisers on the TuteDude Community.</p></div>
+      return `<div class="session-card warn"><div><h4>You're not in a team</h4><p>Teams are locked. Some teams were opened again by the organisers: if one of them sent you its team link, open it to join. Otherwise, message the organisers on the TuteDude Community.</p></div>
         <span class="row-btns">${orgBtns()}</span></div>`;
     }
     return `<div class="team-box">
@@ -1200,7 +1208,7 @@
       ${false ? `<label class="open-toggle"><input type="checkbox" data-act="toggle-open"${t.open ? " checked" : ""}>
           <span><b>Welcome students without a team</b><small>${t.open ? `On: students without a team can pick ${esc(t.name)} from a list and join.` : "Off: only people with your link can join. Turn it on if you need more teammates."}</small></span></label>`
         : ""}
-      ${lead ? `<p class="small muted">Shared the link with the wrong people? <button class="link small" type="button" data-act="reset-code">Make a new link</button> (the old one stops working).</p>` : ""}
+      ${lead && !locked() ? `<p class="small muted">Shared the link with the wrong people? <button class="link small" type="button" data-act="reset-code">Make a new link</button> (the old one stops working).</p>` : ""}
     </div>`;
   }
 
@@ -1210,7 +1218,7 @@
   const capOf = (t) => Math.min(MAX, Number(t.cap) || MAX);
   const teamFull = (t) => !!t.closed || teamSize(t) >= capOf(t);
   function joinCtlHtml(t, lead) {
-    if (!lead || locked()) return "";
+    if (!lead || (locked() && !t.lateOpen)) return "";
     const n = teamSize(t), cap = capOf(t), sizes = [];
     for (let k = Math.max(MIN, n); k <= MAX; k++) sizes.push(k);
     return `<div class="join-ctl">
@@ -1226,7 +1234,7 @@
     const steps = [
       { ok: true, text: `You're in <b>${esc(t.name)}</b>${lead ? " as the leader" : ""}` },
       { ok: !!S.me.sessionOk, text: "You agreed to do your product discussion on TuteDude Sessions" },
-      { ok: n >= MIN, text: n >= MIN ? `Your team has ${n} people${!teamFull(t) && !locked() ? ` (room for ${capOf(t) - n} more)` : ""}` : `Get your teammates in: send them the team link (at least ${MIN} people, up to ${capOf(t)})` },
+      { ok: n >= MIN, text: n >= MIN ? `Your team has ${n} people${!teamFull(t) && (!locked() || t.lateOpen) ? ` (room for ${capOf(t) - n} more)` : ""}` : `Get your teammates in: send them the team link (at least ${MIN} people, up to ${capOf(t)})` },
       { ok: revealed(), text: `The problem statement appears here on <b>${esc(revealText())}</b>. Then you have 1 week to build` },
       { ok: !!t.submission, text: `Your leader submits the project here on <b>${esc(submitDayText())}</b>, before ${esc(submitTimeText())}` }
     ];
@@ -1290,9 +1298,10 @@
 
   function myTeamHtml() {
     const t = S.team, me = S.me.id, lead = amLeader(), lockedNow = locked(), listed = t.listed || [], n = t.members.length + listed.length, ok = n >= MIN;
+    const addOpen = !lockedNow || !!t.lateOpen;   // reopened by the organisers after the lock: the link and "Add a teammate" work again
     const need = MIN - n, cap = capOf(t), full = teamFull(t);
     const status = (ok ? `<span class="ok">✓ Ready</span>` : `<span class="warn-chip">Needs ${need} more ${need === 1 ? "person" : "people"}</span>`)
-      + (ok && full && !lockedNow ? ` <span class="full-chip">${ic("lock")} Team is full</span>` : "");
+      + (ok && full && addOpen ? ` <span class="full-chip">${ic("lock")} Team is full</span>` : "");
     let h = `<div class="team-box">
       <div class="team-title"><p class="kicker">Your team</p>
         <h3>${esc(t.name)}${lead && !lockedNow ? ` <button class="link small" type="button" data-act="rename">Rename</button>` : ""}</h3>
@@ -1314,7 +1323,8 @@
       h += `<div class="session-card warn"><div><h4>Only you are in ${esc(t.name)}</h4><p>Teams are locked, and a team needs at least ${MIN} people to take part. Message the organisers on the TuteDude Community.</p></div>
         <span class="row-btns">${orgBtns()}</span></div>`;
     }
-    if (ok && !lockedNow && (n < MAX || listed.length)) h += inviteHtml(t, lead);
+    if (t.lateOpen && !full) h += `<div class="session-card"><div><h4>${ic("sparkles")} Your team is open again</h4><p>The organisers opened your team, so you can still add teammates (up to ${cap} people) until they close it. ${lead ? "Share your team link, or tap <b>Add a teammate</b> below." : "Share your team link with anyone who wants to join."} New teammates see the problem statement here as soon as they join.</p></div></div>`;
+    if (ok && addOpen && (n < MAX || listed.length)) h += inviteHtml(t, lead);
     if (ok && !full) h += groupHtml(false);
     if (ok || !lockedNow) h += sessionHtml(t);
     h += nextStepsHtml(t, lead);
@@ -1323,7 +1333,7 @@
           ${m.id !== me && m.phone ? waButton(m) : ""}
           ${lead && m.id !== me && !lockedNow ? `<button class="x" type="button" data-act="remove" data-person="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from your team">Remove</button>` : ""}</li>`).join("")}${listed.map((l) => `<li class="m-listed"><i class="av av-listed" aria-hidden="true">${esc(initials(l.name))}</i><span class="m-name"><b>${esc(l.name)}</b><small>${lead && l.email ? esc(l.email) + " · " : ""}added by the leader</small></span>
           ${l.phone ? waButton(l) : ""}
-          ${lead && !lockedNow ? `<button class="x" type="button" data-act="remove-mate" data-id="${esc(l.id)}" data-name="${esc(l.name)}" aria-label="Remove ${esc(l.name)} from your team">Remove</button>` : ""}</li>`).join("")}${lockedNow ? "" : Array.from({ length: t.closed ? (lead && n < cap ? 1 : 0) : Math.max(0, cap - n) }, (_, i) => lead && i === 0
+          ${lead && addOpen ? `<button class="x" type="button" data-act="remove-mate" data-id="${esc(l.id)}" data-name="${esc(l.name)}" aria-label="Remove ${esc(l.name)} from your team">Remove</button>` : ""}</li>`).join("")}${!addOpen ? "" : Array.from({ length: t.closed ? (lead && n < cap ? 1 : 0) : Math.max(0, cap - n) }, (_, i) => lead && i === 0
             ? `<li class="m-empty m-add"><button class="add-mate" type="button" data-act="add-mate"><i class="av av-empty" aria-hidden="true">+</i><span>Add a teammate</span></button></li>`
             : `<li class="m-empty"><i class="av av-empty" aria-hidden="true">+</i><span>Open spot</span></li>`).join("")}</ul>`;
 
@@ -1371,12 +1381,13 @@
      reg.mode: "create" | "join" (team link/code) | "find" (pick an open team) — for a new registration, or
      someone registered without a team — or "edit" (profile only).
      Step 1: team + details. Step 2 (only if they haven't agreed yet): the TuteDude Sessions video + consent. */
-  const reg = { mode: "create", step: 1, info: null, seq: 0 };
+  const reg = { mode: "create", step: 1, info: null, seq: 0, late: false };   // late: joining a team reopened after the lock
   const needsVideo = () => reg.mode !== "edit" && !(S.me && S.me.sessionOk);
 
   function openRegister(mode, code) {
     if (S.me && S.team && mode !== "edit") { $("#board").scrollIntoView({ behavior: "smooth" }); return; }
-    if (locked() && mode !== "edit") { toast("Teams are locked. Registration is closed.", true); return; }
+    if (mode !== "join") reg.late = false;
+    if (locked() && mode !== "edit" && !(mode === "join" && reg.late)) { toast("Teams are locked. Registration is closed.", true); return; }
     mode = ["edit", "join"].includes(mode) ? mode : "create";   // "Find a team" was removed
     const needGoogle = LOGIN === "google" && !S.user;
     $("#googleStep").hidden = !needGoogle;
@@ -1631,7 +1642,7 @@
     if (!phoneTypedOk(f.phone)) return "Please write your 10-digit WhatsApp number (or the full number with + and the country code).";
     if (!emailOk(f.email)) return "Please write a valid email address.";
     if (!f.domain) return "Pick what you do.";
-    if (locked() && reg.mode !== "edit") return "Teams are locked now.";
+    if (locked() && reg.mode !== "edit" && !(reg.mode === "join" && reg.late)) return "Teams are locked now.";
     if (only === "you") return "";
     if (f.link && (!/^https?:\/\/\S+$/i.test(f.link) || f.link.length > 200)) return "That link doesn't look right. Paste the full link (max 200 characters), or leave it empty.";
     if (reg.mode === "create" && (f.teamName.length < 2 || f.teamName.length > 40)) return "Give your team a name (2 to 40 letters).";

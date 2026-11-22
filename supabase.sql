@@ -75,6 +75,9 @@ create index if not exists teams_open_list_idx on teams (size desc, created_at) 
 -- Teammates the leader added keep their spot. A team that drops under bd_min() people opens again by itself.
 alter table teams add column if not exists closed boolean not null default false;
 alter table teams add column if not exists cap int check (cap is null or cap between 2 and 5);
+-- After the team lock: a team the organisers reopened (panel → Teams → "Teams of 2: open to new members").
+-- It can still take people with its team link and the leader can add teammates, up to bd_max(); nothing else unlocks.
+alter table teams add column if not exists late_open boolean not null default false;
 alter table people add column if not exists consent_at timestamptz;          -- when they confirmed they're a TuteDude student
 create unique index if not exists teams_name_unique on teams (lower(name));
 -- When a student watched the video and agreed to discuss their product with their team on a TuteDude
@@ -327,6 +330,15 @@ language plpgsql stable as $$
 begin
   if now() > bd_deadline() then raise exception 'Teams are locked now.'; end if;
 end $$;
+-- the same check for one team: after the lock, a team the organisers reopened (teams.late_open) can still add people
+create or replace function bd_open_for(p_team uuid) returns void
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if now() > bd_deadline() and not coalesce((select late_open from teams where id = p_team), false) then
+    raise exception 'Teams are locked now.';
+  end if;
+end $$;
+revoke all on function bd_open_for(uuid) from public, anon, authenticated;
 
 -- WhatsApp numbers are stored as digits with country code: "09876543210", "+91 98765 43210", "+91 0987…" → "919876543210"
 create or replace function bd_phone(p text) returns text
@@ -530,7 +542,7 @@ begin
                                     'sessionOk', session_ok_at is not null, 'waOk', wa_ok_at is not null) from people where id = uid),
     'team', case when tid is null then null else (
       select json_build_object('id', t.id, 'name', t.name, 'leaderId', t.leader_id, 'code', t.code, 'open', t.open,
-        'closed', t.closed, 'cap', coalesce(t.cap, bd_max()),
+        'closed', t.closed, 'cap', coalesce(t.cap, bd_max()), 'lateOpen', t.late_open and now() > bd_deadline(),
         -- the problem statement: from bd_reveal(), for teams of bd_min()+ people (organisers put the
         -- text/link in bd_settings)
         'problem', case when now() >= bd_reveal() and t.size >= bd_min() then json_build_object(
@@ -558,7 +570,7 @@ language sql stable security definer set search_path = public as $$
                            'full', t.closed or t.size >= coalesce(t.cap, bd_max()), 'closed', t.closed,
                            -- spots held for teammates the leader added (they can still join a full team with their email)
                            'reserved', (select count(*) from team_listed l where l.team_id = t.id),
-                           'leader', split_part(p.name, ' ', 1), 'locked', now() > bd_deadline())
+                           'leader', split_part(p.name, ' ', 1), 'locked', now() > bd_deadline() and not t.late_open, 'lateOpen', t.late_open)
   from teams t join people p on p.id = t.leader_id
   where t.code = bd_code_clean(p_code) and char_length(bd_code_clean(p_code)) = 8;
 $$;
@@ -663,7 +675,11 @@ begin
   end if;
   select team_id into tid from members where person_id = uid;
   -- profile edits are allowed after the lock (to fix a typo); team changes are not
-  if tid is null and (is_new or cd <> '' or p_team is not null or tn <> '') then perform bd_open(); end if;
+  -- after the lock, only one thing: joining a team the organisers reopened, with its team link
+  if tid is null and (is_new or cd <> '' or p_team is not null or tn <> '') then
+    if cd <> '' and tn = '' and p_team is null then perform bd_open_for((select id from teams where code = cd));
+    else perform bd_open(); end if;
+  end if;
   agreed := coalesce((select session_ok_at is not null from people where id = uid), false) or coalesce(p_session_ok, false);
   -- a leader may have added this email to their team already: then that team is the only one they can join
   select team_id into listed_in from team_listed where email = em;
@@ -897,7 +913,7 @@ language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tsize int; tcap int; mn text := bd_clean(p_name);
         me text := lower(trim(coalesce(p_email, ''))); ok boolean; mp text := bd_phone(p_phone);
 begin
-  perform bd_open();
+  perform bd_open_for((select id from teams where leader_id = uid));
   if not bd_email_ok(me) then raise exception 'Please write a valid email address.'; end if;
   if mp <> '' and not bd_phone_typed_ok(p_phone, mp) then raise exception 'Check your teammate''s WhatsApp number (10 digits).'; end if;
   ok := bd_is_student(me);   -- before the team lock: it asks TuteDude's API
@@ -928,7 +944,7 @@ create or replace function remove_teammate(p_id uuid) returns void
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; mn text;
 begin
-  perform bd_open();
+  perform bd_open_for((select id from teams where leader_id = uid));
   perform pg_advisory_xact_lock(7231001);
   select id into tid from teams where leader_id = uid;
   if tid is null then raise exception 'Only the team leader can remove teammates.'; end if;
@@ -958,7 +974,7 @@ create or replace function set_team_closed(p_closed boolean) returns void
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tsize int; c boolean := coalesce(p_closed, false);
 begin
-  perform bd_open();
+  perform bd_open_for((select id from teams where leader_id = uid));
   perform pg_advisory_xact_lock(7231001);
   select id, size into tid, tsize from teams where leader_id = uid;
   if tid is null then raise exception 'Only the team leader can change this.'; end if;
@@ -975,7 +991,7 @@ create or replace function set_team_cap(p_cap int) returns void
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tsize int;
 begin
-  perform bd_open();
+  perform bd_open_for((select id from teams where leader_id = uid));
   if p_cap is null or p_cap not between bd_min() and bd_max() then raise exception 'Pick a team size from % to %.', bd_min(), bd_max(); end if;
   perform pg_advisory_xact_lock(7231001);
   select id, size into tid, tsize from teams where leader_id = uid;
@@ -1639,6 +1655,34 @@ begin
   return json_build_object('at', l -> 'at', 'count', l -> 'count', 'done', waiting = 0, 'ready', true,
     'accepted', acc, 'failed', bad, 'error', left(array_to_string(errs, ' | '), 400));
 end $$;
+-- ---------- After the lock: teams of 2 open to new members (organisers) ----------
+-- p_open true: every team of exactly 2 people opens again (closed / team size reset), so it can add people with
+-- its team link or "Add a teammate", up to bd_max(). false: every reopened team closes. Dry run: how many are open.
+create or replace function admin_late_teams(p_open boolean default null, p_dry_run boolean default false) returns json
+language plpgsql security definer set search_path = public as $$
+declare n int := 0; r record;
+begin
+  perform bd_admin_only();
+  if not coalesce(p_dry_run, false) and p_open is not null then
+    perform pg_advisory_xact_lock(7231001);
+    if p_open then
+      for r in update teams set late_open = true, closed = false, cap = null where size = 2 and not late_open returning id loop
+        perform bd_say(r.id, 'The organisers opened the team again: add teammates with the team link or "Add a teammate".');
+        n := n + 1;
+      end loop;
+    else
+      for r in update teams set late_open = false where late_open returning id loop
+        perform bd_say(r.id, 'The organisers closed the team to new members.');
+        n := n + 1;
+      end loop;
+    end if;
+  end if;
+  return json_build_object('changed', n, 'open', (select count(*) from teams where late_open),
+                           'teamsOf2', (select count(*) from teams where size = 2 and not late_open), 'locked', now() > bd_deadline());
+end $$;
+revoke execute on function admin_late_teams(boolean, boolean) from public, anon;
+grant execute on function admin_late_teams(boolean, boolean) to authenticated;
+
 revoke execute on function admin_whatsapp_problem(boolean, boolean), admin_whatsapp_problem_status() from public, anon;
 grant execute on function admin_whatsapp_problem(boolean, boolean), admin_whatsapp_problem_status() to authenticated;
 
