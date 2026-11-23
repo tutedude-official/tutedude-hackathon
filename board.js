@@ -147,6 +147,30 @@
     }
 
     const ops = {
+      // same as switch_team in supabase.sql: after the lock, leave + join another team with room in one step
+      switchTeam(uid, code) {
+        const p = db.people[uid], t = byCode(code);
+        if (!p) fail("Register first.");
+        if (!t) fail("That team link doesn't work. Ask that team's leader to send it again.");
+        const old = teamOf(uid);
+        if (old === t.id) fail(`You're already in ${t.name}.`);
+        if (old && db.teams[old].submission) fail("Your team already submitted its project, so the team is final.");
+        if (t.submission) fail(`${t.name} already submitted its project, so it can't take new members.`);
+        const claim = listedOf(t.id).some((l) => l.email === p.email);
+        if (fullT(t) && !claim) fail(`${t.name} is full. Ask for the link of another team.`);
+        if (old) {
+          const oldName = db.teams[old].name, left = takeOut(uid);
+          if (left) {
+            say(left, `${p.name} left the team and joined another team.`);
+            notifyTeam(left, null, "Team update", `${p.name} left ${oldName} and joined another team.`, "team-" + left);
+          }
+        }
+        if (claim) t.listed = listedOf(t.id).filter((l) => l.email !== p.email);
+        db.members[uid] = { teamId: t.id, joinedAt: now() };
+        say(t.id, `${p.name}${skillTag(p.domain)} joined the team`);
+        notifyTeam(t.id, uid, `${t.name}: new teammate`, `${p.name}${skillTag(p.domain)} joined your team. Say hi!`, "team-" + t.id);
+        return { team: t.name, left: old ? true : null };
+      },
       // same as save_profile in supabase.sql
       saveProfile(uid, p) {
         open();
@@ -448,6 +472,7 @@
       reclaim: (phone, email) => run(() => ops.reclaim(myId(), phone, email)),
       rename: (name) => run(() => ops.rename(myId(), name)),
       leave: () => run(() => ops.leave(myId())),
+      switchTeam: (code) => run(() => ops.switchTeam(myId(), code)),
       remove: (pid) => run(() => ops.remove(myId(), pid)),
       resetCode: () => run(() => ops.resetCode(myId())),
       async savePush() {},
@@ -589,6 +614,7 @@
       reclaim: (phone, email) => withLiveAccount(() => rpc("reclaim_profile", { p_phone: phone, p_email: email })),
       rename: (name) => rpc("rename_team", { p_name: name }),
       leave: () => rpc("leave_team"),
+      switchTeam: (code) => rpc("switch_team", { p_code: code }),
       remove: (pid) => rpc("remove_member", { p_person: pid }),
       resetCode: () => rpc("reset_team_code"),
       savePush: (endpoint, p256dh, auth) => rpc("save_push", { p_endpoint: endpoint, p_p256dh: p256dh, p_auth: auth }),
@@ -672,6 +698,12 @@
   function clearJoin() { if (/join=/.test(location.hash + location.search)) history.replaceState(null, "", location.pathname); }
   async function openJoin(code) {
     clearJoin();
+    if (S.me && locked()) {
+      if (S.team && cleanCode(S.team.code) === code) { toast(`You're already in ${S.team.name}.`); return; }
+      if (S.team && S.team.submission) { toast(`${S.team.name} already submitted its project, so your team is final.`, true); return; }
+      openSwitch(code);
+      return;
+    }
     if (S.team) {
       if (cleanCode(S.team.code) === code) toast(`You're already in ${S.team.name}.`);
       else toast(`You're already in ${S.team.name}. To join another team, leave ${S.team.name} first (at the bottom of your team page).`, true);
@@ -1120,8 +1152,8 @@
   // registered, but not in a team (they left, or the leader removed them)
   function noTeamHtml() {
     if (locked()) {
-      return `<div class="session-card warn"><div><h4>You're not in a team</h4><p>Teams are locked. Some teams were opened again by the organisers: if one of them sent you its team link, open it to join. Otherwise, message the organisers on the TuteDude Community.</p></div>
-        <span class="row-btns">${orgBtns()}</span></div>`;
+      return `<div class="session-card warn"><div><h4>You're not in a team</h4><p>You can still join a team that has room: ask its leader for the team link, then open it or paste it here. You need a team to take part.</p></div>
+        <span class="row-btns"><button class="btn btn-sm" type="button" data-act="switch-team">Join with a team link</button>${orgBtns()}</span></div>`;
     }
     return `<div class="team-box">
       <div class="team-title"><p class="kicker">Your team</p><h3>You're not in a team yet</h3>
@@ -1217,7 +1249,7 @@
   const capOf = (t) => Math.min(MAX, Number(t.cap) || MAX);
   const teamFull = (t) => !!t.closed || teamSize(t) >= capOf(t);
   function joinCtlHtml(t, lead) {
-    if (!lead || (locked() && !t.lateOpen)) return "";
+    if (!lead || t.submission) return "";   // after the lock too: people can still move into a team with room
     const n = teamSize(t), cap = capOf(t), sizes = [];
     for (let k = Math.max(MIN, n); k <= MAX; k++) sizes.push(k);
     return `<div class="join-ctl">
@@ -1298,7 +1330,6 @@
   function myTeamHtml() {
     const t = S.team, me = S.me.id, lead = amLeader(), lockedNow = locked(), listed = t.listed || [], n = t.members.length + listed.length, ok = n >= MIN;
     const addOpen = !lockedNow || !!t.lateOpen;   // reopened by the organisers after the lock: the link and "Add a teammate" work again
-    const lateMoves = lockedNow && !!t.lateOpen && !t.submission;   // …and members can leave, the leader can remove (until the team submits)
     const need = MIN - n, cap = capOf(t), full = teamFull(t);
     const status = (ok ? `<span class="ok">✓ Ready</span>` : `<span class="warn-chip">Needs ${need} more ${need === 1 ? "person" : "people"}</span>`)
       + (ok && full && addOpen ? ` <span class="full-chip">${ic("lock")} Team is full</span>` : "");
@@ -1352,10 +1383,10 @@
         h += `<p class="leave-row"><span class="leave-note">${ic("hourglass")} <span>Not the right team? You can leave for the next <b>${hrs ? hrs + (hrs === 1 ? " hour" : " hours") : mins + (mins === 1 ? " minute" : " minutes")}</b>.</span></span>
           <button class="link small danger" type="button" data-act="leave">Leave team</button></p>`;
       } else h += `<p class="leave-row"><span class="leave-note">${ic("lock")} <span>You joined this team more than ${LEAVE_MS / 36e5} hours ago, so it is final. Need help? Ask on the TuteDude Community.</span></span></p>`;
-    } else if (lateMoves) {
-      // a team the organisers reopened: anyone can leave and join another open team with its link
-      h += `<p class="leave-row"><span class="leave-note">${ic("users")} <span>Your team is open again, so you can leave it and join another team that's still open, with its team link.${lead ? " As the leader you can also remove someone and add a new teammate." : ""}</span></span>
-        <button class="link small danger" type="button" data-act="leave">Leave team</button></p>`;
+    } else if (!t.submission) {
+      // after the lock: move to another team with room, with its team link (leave + join in one step, supabase.sql switch_team)
+      h += `<p class="leave-row"><span class="leave-note">${ic("users")} <span>Not happy with your team? Ask the leader of another team for their team link, then move there in one step.${lead ? " As the leader you can also remove a teammate." : ""}</span></span>
+        <button class="link small danger" type="button" data-act="switch-team">Leave and join another team</button></p>`;
     }
     return h + `</div>`;
   }
@@ -1363,10 +1394,10 @@
   /* ============================================================
      DIALOGS
      ============================================================ */
-  const regDlg = $("#regDlg"), nameDlg = $("#nameDlg"), profDlg = $("#profDlg"), sessionDlg = $("#sessionDlg"), findDlg = $("#findDlg"), reclaimDlg = $("#reclaimDlg"), mateDlg = $("#mateDlg"), subDlg = $("#subDlg");
+  const regDlg = $("#regDlg"), nameDlg = $("#nameDlg"), profDlg = $("#profDlg"), sessionDlg = $("#sessionDlg"), findDlg = $("#findDlg"), reclaimDlg = $("#reclaimDlg"), mateDlg = $("#mateDlg"), subDlg = $("#subDlg"), switchDlg = $("#switchDlg");
   function openDlg(d) { if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute("open", ""); } document.documentElement.classList.add("modal-open"); updateSticky(); }
   function closeDlg(d) { if (d.open) { if (d.close) d.close(); else d.removeAttribute("open"); } if (!$("dialog[open]")) document.documentElement.classList.remove("modal-open"); updateSticky(); }
-  [regDlg, nameDlg, profDlg, sessionDlg, findDlg, reclaimDlg, mateDlg, subDlg].forEach((d) => {
+  [regDlg, nameDlg, profDlg, sessionDlg, findDlg, reclaimDlg, mateDlg, subDlg, switchDlg].forEach((d) => {
     d.addEventListener("click", (e) => {
       if (e.target === d && d === regDlg && Date.now() - (reg.stepAt || 0) < 800) return;
       if (e.target === d || e.target.closest("[data-close]")) closeDlg(d);
@@ -1376,6 +1407,60 @@
   sessionDlg.addEventListener("close", () => { const v = $("#sessionVideo video"); if (v) v.pause(); });
   findDlg.addEventListener("close", () => { const v = $("#findVideo video"); if (v) v.pause(); });
   regDlg.addEventListener("close", () => { const v = $("#regVideo video"); if (v) v.pause(); });
+  /* move to another team after the lock (supabase.sql switch_team): check the team first, then leave + join in one step */
+  const sw = { code: "", info: null };
+  function resetSwitch() {
+    sw.code = ""; sw.info = null;
+    $("#switchInfo").hidden = true;
+    $("#switchSubmit").textContent = "Check the team";
+  }
+  function openSwitch(code) {
+    resetSwitch();
+    showErr("#switchErr", "");
+    const t = S.team;
+    $("#switchTitle").textContent = t ? "Join another team" : "Join a team";
+    $("#switchNote").textContent = t ? `Ask the leader of the team you want to join for their team link, and paste it here. You leave ${t.name} and join the new team in one step, so you stay in the Buildathon.`
+      : "Ask the leader of the team you want to join for their team link, and paste it here.";
+    $("#swCode").value = code ? showCode(code) : "";
+    openDlg(switchDlg);
+    if (code) checkSwitch(); else setTimeout(() => $("#swCode").focus(), 50);
+  }
+  async function checkSwitch() {
+    const raw = $("#swCode").value.trim(), code = cleanCode((raw.match(/join=([A-Za-z0-9-]+)/) || [])[1] || raw), t = S.team;
+    showErr("#switchErr", "");
+    if (code.length !== 8) return showErr("#switchErr", "Paste the full team link (it ends with #join=…), or the 8-letter team code.");
+    if (t && cleanCode(t.code) === code) return showErr("#switchErr", `That's the link of your own team, ${t.name}.`);
+    const btn = $("#switchSubmit");
+    btn.disabled = true;
+    let info = null;
+    try { await whenReady(); info = await S.be.teamByCode(code); } catch (e) { console.warn(e); }
+    btn.disabled = false;
+    if (!info) return showErr("#switchErr", "That team link doesn't work. Ask the leader to send it again.");
+    if (info.full) return showErr("#switchErr", `${info.name} is full. Ask for the link of another team.`);
+    sw.code = code; sw.info = info;
+    const alone = t && t.members.length <= 1;
+    $("#switchInfo").innerHTML = `<b>${esc(info.name)}</b>, led by ${esc(info.leader)}: ${Number(info.size) || 0} of ${Number(info.max) || MAX} people.`
+      + (t ? ` You leave <b>${esc(t.name)}</b>${alone ? " (you're its only member, so it is deleted)" : amLeader() ? " and its next member becomes the leader" : ""}. Both teams are told.` : "");
+    $("#switchInfo").hidden = false;
+    btn.textContent = t ? `Leave ${t.name} and join ${info.name}` : `Join ${info.name}`;
+  }
+  async function submitSwitch(e) {
+    e.preventDefault();
+    if (!sw.info) return checkSwitch();
+    const btn = $("#switchSubmit"), name = sw.info.name;
+    btn.disabled = true;
+    try {
+      await whenReady();
+      await S.be.switchTeam(sw.code);
+      closeDlg(switchDlg);
+      await refresh();
+      toast(`You're in ${name} now. Say hi to your new team!`);
+      $("#board").scrollIntoView({ behavior: "smooth" });
+    } catch (err) {
+      console.warn(err);
+      showErr("#switchErr", (err && err.message) || "Something went wrong. Try again.");
+    } finally { btn.disabled = false; }
+  }
   function showErr(id, msg) {
     const el = $(id); el.textContent = msg || ""; el.hidden = !msg;
     if (msg && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
@@ -2077,6 +2162,8 @@
     liveWatch($("#mateForm"));
     liveWatch($("#regForm"));
     $("#reclaimForm").addEventListener("submit", submitReclaim);
+    $("#switchForm").addEventListener("submit", submitSwitch);
+    $("#swCode").addEventListener("input", () => { showErr("#switchErr", ""); if (sw.info) resetSwitch(); });
     $("#reclaimForm").addEventListener("input", () => showErr("#reclaimErr", ""));
     $("#regForm").addEventListener("input", () => showErr("#regErr", ""));
     $("#nameForm").addEventListener("input", () => showErr("#nameErr", ""));
@@ -2099,6 +2186,7 @@
       const a = b.dataset.act, person = b.dataset.person, be = S.be;
       if (b.closest("#profDlg") && a !== "profile") closeDlg(profDlg);
       switch (a) {
+        case "switch-team": return openSwitch("");
         case "register": return openRegister();
         case "name-gen": return funName();
         case "register-create": return openRegister("create");
@@ -2163,7 +2251,7 @@
           const m = S.team && S.team.members.find((x) => x.id === person);
           if (!m) return;
           const t = S.team, n = t.members.length + (t.listed || []).length, canAdd = !locked() || !!t.lateOpen;
-          const msg = `Remove ${m.name} from your team? They stay registered and can join another team${locked() ? " that's still open" : ""}.`
+          const msg = `Remove ${m.name} from your team? They stay registered and can join another team${locked() ? " with room, with its team link" : ""}.`
             + (canAdd ? " Then you can add someone new." : " Teams are locked, so you can't add someone new in their place.")
             + (n - 1 < MIN ? ` Your team will have only ${n - 1} ${n - 1 === 1 ? "person" : "people"}, and teams need at least ${MIN} to take part.` : "");
           if (confirm(msg)) act(b, () => be.remove(person), `${first(m.name)} was removed.${canAdd ? " If they still have your team link, make a new one." : ""}`);

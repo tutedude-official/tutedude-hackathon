@@ -878,6 +878,53 @@ begin
   perform bd_notify_team(tid, null, 'Team update', nm || ' left your team.' || case when was_lead then ' ' || (select split_part(p.name, ' ', 1) from teams t join people p on p.id = t.leader_id where t.id = tid) || ' is the leader now.' else '' end, 'team-' || tid);
 end $$;
 
+-- After the lock: move to another team with its team link, in one step (leave + join), so nobody drops out of the
+-- Buildathon by leaving. It is also how someone without a team (e.g. the leader removed them) joins one.
+-- The new team needs room ("Team is full" off) and must not have submitted; a team that submitted is final.
+create or replace function switch_team(p_code text) returns json
+language plpgsql security definer set search_path = public as $$
+declare uid uuid := bd_me(); cd text := bd_code_clean(coalesce(substring(p_code from 'join=([A-Za-z0-9-]+)'), p_code)); nm text; d text; em text; was_lead boolean;
+        old uuid; oldname text; tid uuid; tname text; tfull boolean; listed_in uuid; ln text;
+begin
+  perform pg_advisory_xact_lock(7231001);
+  select name, domain, lower(email) into nm, d, em from people where id = uid;
+  if nm is null then raise exception 'Register first.'; end if;
+  if char_length(cd) <> 8 then raise exception 'Paste the team link of the team you want to join (or its 8-letter team code).'; end if;
+  select t.id, t.name, t.closed or t.size >= coalesce(t.cap, bd_max()) into tid, tname, tfull from teams t where t.code = cd;
+  if tid is null then raise exception 'That team link doesn''t work. Ask that team''s leader to send it again.'; end if;
+  select m.team_id, t.name, t.leader_id = uid into old, oldname, was_lead from members m join teams t on t.id = m.team_id where m.person_id = uid;
+  if old = tid then raise exception 'You''re already in %.', tname; end if;
+  if old is not null and exists (select 1 from submissions where team_id = old) then
+    raise exception 'Your team already submitted its project, so the team is final.';
+  end if;
+  if exists (select 1 from submissions where team_id = tid) then
+    raise exception '% already submitted its project, so it can''t take new members.', tname;
+  end if;
+  select team_id into listed_in from team_listed where email = em;
+  if tfull and listed_in is distinct from tid then raise exception '% is full. Ask for the link of another team.', tname; end if;
+  perform bd_move(uid);   -- at most 6 team changes an hour
+  if old is not null then
+    old := bd_take_out(uid);   -- the next member leads; a team nobody is left in is deleted
+    if old is not null then
+      perform bd_say(old, nm || ' left the team and joined another team.' || case when was_lead then ' '
+        || (select p.name from teams t join people p on p.id = t.leader_id where t.id = old) || ' is the leader now.' else '' end);
+      perform bd_notify_team(old, null, 'Team update', nm || ' left ' || oldname || ' and joined another team.' || case when was_lead then ' '
+        || (select split_part(p.name, ' ', 1) from teams t join people p on p.id = t.leader_id where t.id = old) || ' is the leader now.' else '' end, 'team-' || old);
+    end if;
+  end if;
+  -- a leader had added this email: that spot is used now, or freed in the other team
+  if listed_in is not null then
+    delete from team_listed where email = em returning name into ln;
+    if listed_in <> tid then perform bd_say(listed_in, ln || ' joined another team, so they were taken off this one.'); end if;
+  end if;
+  insert into members (person_id, team_id) values (uid, tid);
+  perform bd_say(tid, nm || bd_tag(d) || ' joined the team 👋');
+  perform bd_notify_team(tid, uid, tname || ': new teammate', nm || bd_tag(d) || ' joined your team. Say hi!', 'team-' || tid);
+  return json_build_object('team', tname, 'left', oldname);
+end $$;
+revoke execute on function switch_team(text) from public, anon;
+grant execute on function switch_team(text) to authenticated;
+
 -- the leader takes someone out (e.g. a stranger who got the link). They stay registered without a team.
 create or replace function remove_member(p_person uuid) returns void
 language plpgsql security definer set search_path = public as $$
@@ -896,7 +943,7 @@ begin
   perform bd_take_out(p_person);
   perform bd_say(tid, pname || ' was removed by the leader.');
   perform bd_notify(p_person, 'Team update', 'You were removed from ' || tname || case when now() > bd_deadline()
-    then '. You can join another team that is still open with its team link, or message the organisers.' else '. Join your team again with its link, or create a new team.' end, 'team-none');
+    then '. To join another team, open its team link (ask its leader for it).' else '. Join your team again with its link, or create a new team.' end, 'team-none');
 end $$;
 
 -- the leader makes a new team link (the old one stops working), e.g. if it was shared too widely
@@ -982,7 +1029,7 @@ create or replace function set_team_closed(p_closed boolean) returns void
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tsize int; c boolean := coalesce(p_closed, false);
 begin
-  perform bd_open_for((select id from teams where leader_id = uid));
+  -- works after the lock too: people can still move into a team with room (switch_team)
   perform pg_advisory_xact_lock(7231001);
   select id, size into tid, tsize from teams where leader_id = uid;
   if tid is null then raise exception 'Only the team leader can change this.'; end if;
@@ -999,7 +1046,7 @@ create or replace function set_team_cap(p_cap int) returns void
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tsize int;
 begin
-  perform bd_open_for((select id from teams where leader_id = uid));
+  -- works after the lock too: people can still move into a team with room (switch_team)
   if p_cap is null or p_cap not between bd_min() and bd_max() then raise exception 'Pick a team size from % to %.', bd_min(), bd_max(); end if;
   perform pg_advisory_xact_lock(7231001);
   select id, size into tid, tsize from teams where leader_id = uid;

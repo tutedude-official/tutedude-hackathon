@@ -409,6 +409,26 @@
   </div>
 </dialog>
 
+<!-- ============ MOVE TO ANOTHER TEAM (after the lock: leave + join in one step) ============ -->
+<dialog class="modal" id="switchDlg" aria-labelledby="switchTitle">
+  <div class="modal-head">
+    <div><p class="kicker">Change team</p><h2 class="h3" id="switchTitle">Join another team</h2></div>
+    <button type="button" class="modal-close" data-close aria-label="Close"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="modal-body">
+    <form class="form" id="switchForm" novalidate>
+      <p class="form-note" id="switchNote">Ask the leader of the team you want to join for their team link, and paste it here.</p>
+      <div class="field">
+        <label for="swCode">Team link or team code</label>
+        <input id="swCode" type="text" inputmode="url" maxlength="200" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://buildathon.tutedude.com/#join=ABCD-EFGH" required>
+      </div>
+      <p class="form-note" id="switchInfo" hidden></p>
+      <p class="form-error" id="switchErr" role="alert" hidden></p>
+      <button type="submit" class="btn btn-full" id="switchSubmit">Check the team</button>
+    </form>
+  </div>
+</dialog>
+
 <!-- ============ SUBMIT THE PROJECT (leader, once) ============ -->
 <dialog class="modal modal-full" id="subDlg" aria-labelledby="subTitle">
   <div class="modal-head">
