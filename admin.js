@@ -189,7 +189,7 @@
   const teamLink = (c) => new URL("./#join=" + showCode(c), location.href).href;
   // TuteDude's API: true = a TuteDude account, false = not on TuteDude, null = couldn't be checked yet
   const studentChip = (v) => (v === true ? `<span class="yes">✓ TuteDude account</span>` : v === false ? `<span class="no">✗ Not on TuteDude</span>` : `<span class="muted">? TuteDude not checked yet</span>`);
-  function memberHtml(m, inTeam) {
+  function memberHtml(m, inTeam, t) {
     return `<div class="adm-mem">
         <div class="who"><b>${esc(m.name)}</b>${m.leader ? ` <span class="lead">Leader</span>` : ""}<small>${icon(m.domain)} ${esc(label(m.domain))}${m.skill ? " · " + esc(m.skill) : ""}</small></div>
         <div class="contact"><a href="https://wa.me/${esc(waNum(m.phone))}" target="_blank" rel="noopener">📱 +${esc(waNum(m.phone))}</a>
@@ -197,7 +197,8 @@
           ${studentChip(m.student)}
           <span class="${m.agreed ? "yes" : "no"}">${m.agreed ? "✓ Agreed to TuteDude Sessions" : "✗ Not agreed"}</span>${m.link ? ` <a href="${esc(safeUrl(m.link))}" target="_blank" rel="noopener nofollow">work ↗</a>` : ""}</div>
         <div class="acts"><button type="button" data-act="move" data-person="${esc(m.id)}" data-name="${esc(m.name)}">${inTeam ? "Move" : "Add to a team"}</button>
-          <button type="button" class="danger" data-act="remove" data-person="${esc(m.id)}" data-name="${esc(m.name)}">Remove</button></div>
+          ${inTeam ? `<button type="button" data-act="take-out" data-person="${esc(m.id)}" data-name="${esc(m.name)}" data-team-name="${esc(t.name)}" data-alone="${(t.members || []).length <= 1 ? "1" : ""}">Remove from team</button>` : ""}
+          <button type="button" class="danger" data-act="remove" data-person="${esc(m.id)}" data-name="${esc(m.name)}">Delete registration</button></div>
       </div>`;
   }
   function teamHtml(t) {
@@ -207,9 +208,10 @@
         <span class="meta"><span class="${ready ? "ok" : "warn-chip"}">${ready ? "✓ Ready" : `Under ${MIN} people`}</span> <b>${size}/${Number(t.cap) || MAX}</b>${t.open ? ` <span class="ok">Open</span>` : ""}${t.closed ? ` <span class="warn-chip">Team is full (closed)</span>` : ""}
           <span class="muted">· code <b class="mono">${esc(showCode(t.code))}</b> <button class="link small" type="button" data-act="copy-link" data-code="${esc(t.code)}">Copy link</button></span>
           <span class="muted">· started ${esc(fmt(t.createdAt))}</span>
+          ${size < MAX ? `<button class="link small" type="button" data-act="add-member" data-team="${esc(t.id)}" data-name="${esc(t.name)}">+ Add member</button>` : ""}
           <button class="link small" type="button" data-act="rename" data-team="${esc(t.id)}" data-name="${esc(t.name)}">Rename</button>
           <button class="link small" type="button" data-act="notify-team" data-team="${esc(t.id)}" data-name="${esc(t.name)}">Notify team</button></span></div>
-      ${members.map((m) => memberHtml(m, true)).join("")}
+      ${members.map((m) => memberHtml(m, true, t)).join("")}
       ${(t.listed || []).map((l) => `<div class="adm-mem adm-listed">
         <div class="who"><b>${esc(l.name)}</b><small>Added by the leader · hasn't signed up</small></div>
         <div class="contact">${l.phone ? `<a href="https://wa.me/${esc(waNum(l.phone))}" target="_blank" rel="noopener">📱 +${esc(waNum(l.phone))}</a>` : ""}<a href="${esc(mailto(l.email))}">✉️ ${esc(l.email)}</a>${studentChip(l.student)}</div>
@@ -268,6 +270,43 @@
       const name = await rpc("admin_move", { p_person: p.id, p_team: teamId });
       moveDlg.close();
       toast(`${p.name} moved to ${name}.`);
+      loadTeams(true);
+    });
+  }
+
+  /* add-member dialog: search anyone registered and put them in this team (moving them out of their old one) */
+  const addDlg = $("#addDlg");
+  addDlg.addEventListener("click", (e) => { if (e.target === addDlg || e.target.closest("[data-close]")) addDlg.close(); });
+  let addSeq = 0;
+  async function loadAddOptions() {
+    const seq = ++addSeq, q = $("#addSearch").value.trim();
+    const list = await busy(null, () => rpc("admin_people_options", { p_team: S.adding.id, p_search: q }));
+    if (!list || seq !== addSeq) return;
+    S.addList = list;
+    $("#addList").innerHTML = list.length ? list.map((p, i) => `<li><button type="button" data-act="add-pick" data-i="${i}">
+        <span>${esc(p.name)}<small>${esc(p.email)} · +${esc(waNum(p.phone))}</small></span>
+        <span>${p.team ? `In ${esc(p.team)}${p.leader ? " (leader)" : ""}` : "No team"}</span></button></li>`).join("")
+      : `<li class="muted">${q ? "Nobody matches that name, email or number." : "Everyone registered is in a team. Search a name, email or number to move someone here."}</li>`;
+  }
+  let addTimer = 0;
+  $("#addSearch").addEventListener("input", () => { clearTimeout(addTimer); addTimer = setTimeout(loadAddOptions, 300); });
+  async function doAdd(btn, p) {
+    const t = S.adding;
+    if (p.team && p.submitted && p.teamMembers <= 1) {
+      alert(`${p.name} is the only member of ${p.team}, which already submitted its project. Moving them would delete that team and its submission.`);
+      return;
+    }
+    const msg = p.team
+      ? `${p.name} is in ${p.team} now. Move them to ${t.name}?`
+        + (p.teamMembers <= 1 ? ` They are the only member, so ${p.team} will be deleted.` : p.leader ? ` The next member of ${p.team} becomes its leader.` : "")
+        + (p.submitted && p.teamMembers > 1 ? ` (${p.team} has already submitted; the submission stays with ${p.team}.)` : "")
+        + " Everyone involved gets a notification."
+      : `Add ${p.name} to ${t.name}? They and the team get a notification.`;
+    if (!confirm(msg)) return;
+    await busy(btn, async () => {
+      await rpc("admin_move", { p_person: p.id, p_team: t.id });
+      addDlg.close();
+      toast(`${p.name} added to ${t.name}.`);
       loadTeams(true);
     });
   }
@@ -557,6 +596,26 @@
         loadMoveOptions();
         return;
       case "move-to": return doMove(b, d.team, d.name);
+      case "add-member":
+        S.adding = { id: d.team, name: d.name };
+        $("#addTitle").textContent = `Add someone to ${d.name}`;
+        $("#addSearch").value = "";
+        $("#addList").innerHTML = `<li class="muted">Loading…</li>`;
+        addDlg.showModal();
+        $("#addSearch").focus();
+        loadAddOptions();
+        return;
+      case "add-pick": {
+        const p = S.addList && S.addList[Number(d.i)];
+        if (p) doAdd(b, p);
+        return;
+      }
+      case "take-out":
+        if (confirm(`Take ${d.name} out of ${d.teamName}? They stay registered: you can add them to another team, or they can join one that's still open with its team link.`
+          + (d.alone ? ` They are the only member, so ${d.teamName} will be deleted.` : "") + " They and the team get a notification.")) {
+          busy(b, async () => { const tn = await rpc("admin_take_out", { p_person: d.person }); toast(`${d.name} was taken out of ${tn}.`); loadTeams(true); });
+        }
+        return;
       case "remove-listed":
         if (confirm(`Take ${d.name} off their team? (They were added by the leader and haven't signed up.)`)) {
           busy(b, async () => { const nm = await rpc("admin_remove_listed", { p_id: d.id }); toast(`${nm} was removed.`); loadTeams(true); });

@@ -70,7 +70,7 @@ After editing `supabase.sql`, run it again in **Supabase → SQL Editor**.
 - **`login: "google"`.** Students can open their team from any device. This needs a Google OAuth client added under **Authentication → Providers → Google**.
 
 ## Leaving a team
-A student can leave their team only in the first **24 hours** after joining it (`leaveHours` in config.js, `bd_leave_hours()` in supabase.sql). After that the team page shows "it is final". Someone who is alone in a team can always leave. The leader can still remove a member, and organisers can move people from the panel.
+A student can leave their team only in the first **24 hours** after joining it (`leaveHours` in config.js, `bd_leave_hours()` in supabase.sql). After that the team page shows "it is final". Someone who is alone in a team can always leave. The leader can still remove a member, in any team and after the lock too, until the team submits its project (after the lock, only a team the organisers reopened can add someone new). Organisers can move people from the panel.
 
 ## Team is full (the leader closes the team)
 In the team link card the leader has two controls, until teams lock:
@@ -180,7 +180,10 @@ Open `https://rajnishpark03.github.io/tutedude-hackathon/admin.html`. It isn't l
 - **Teams:** filters (ready, only 1 person, full, open, not in a team) and search by team, team code, name, email or WhatsApp. Every member's WhatsApp, email and agreement, plus the teammates their leader added. Actions:
   - **Copy link** of a team (to resend it to a student who lost it).
   - **Move** a person to another team with room (or **Add to a team** for someone not in one). Everyone involved gets a notification.
-  - **Remove** a fake or outsider registration completely (their team passes to the next member), or take an added teammate off a team.
+  - **+ Add member** on a team (with room): search anyone by name, email or WhatsApp number and put them in that team. Someone already in another team is moved out of it. An empty search lists people without a team.
+  - **Remove from team:** takes a person out of their team but keeps their registration, so they can be added to another team or join one that's still open with its link. If they led the team, the next member leads; if they were the only member, the team is deleted.
+  - Move, Add member and Remove from team work after the lock too. They refuse to take the last member out of a team that already submitted, because that would delete the team and its submission.
+  - **Delete registration** of a fake or outsider completely (their team passes to the next member), or **Remove** a teammate the leader added who hasn't signed up.
   - **Rename** a team, or **Notify team**.
   - **Export CSV:** one row per person, including added teammates (`signedUp` = no). Cells are protected against spreadsheet formulas.
 - **Problem statement:** write it, see a preview and save. Students see it at 21 Nov, 7:15 PM, with no SQL needed.

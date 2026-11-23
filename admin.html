@@ -181,6 +181,20 @@
   </div>
 </dialog>
 
+<dialog class="modal" id="addDlg" aria-labelledby="addTitle">
+  <div class="modal-head">
+    <div><p class="kicker">Add a member</p><h2 class="h3" id="addTitle">Add someone</h2></div>
+    <button type="button" class="modal-close" data-close aria-label="Close">×</button>
+  </div>
+  <div class="modal-body">
+    <div class="form">
+      <input class="adm-search" id="addSearch" type="search" placeholder="Search name, email or WhatsApp number" aria-label="Search name, email or WhatsApp number">
+      <ul class="adm-options" id="addList"></ul>
+      <p class="form-note">With an empty search, the list shows people who aren't in a team. Someone already in a team is moved out of it (if they led it, the next member leads). The person and both teams get a notification.</p>
+    </div>
+  </div>
+</dialog>
+
 <dialog class="modal" id="pwDlg" aria-labelledby="pwTitle">
   <div class="modal-head">
     <div><p class="kicker">Your account</p><h2 class="h3" id="pwTitle">Change password</h2></div>

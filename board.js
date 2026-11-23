@@ -351,8 +351,7 @@
         notifyTeam(left, null, "Team update", `${p.name} left your team.` + (wasLead ? ` ${first(lead.name)} is the leader now.` : ""), "team-" + left);
       },
       remove(uid, pid) {
-        open();
-        const t = leaderTeam(uid);
+        const t = leaderTeam(uid);   // the leader can remove a teammate after the lock too
         if (!t) fail("Only the team leader can remove people.");
         if (pid === uid) fail('You can\'t remove yourself. Use "Leave team" instead.');
         if (teamOf(pid) !== t.id) return;
@@ -1332,7 +1331,7 @@
 
     h += `<ul class="mlist">${t.members.map((m) => `<li>${avHtml(m)}<span class="m-name"><b>${plink(m.id, m.name + (m.id === me ? " (you)" : ""))}</b>${m.id === t.leaderId ? ` <span class="lead">Leader</span>` : ""}${hasSkill(m.domain) ? `<small>${esc(label(m.domain))}</small>` : ""}</span>
           ${m.id !== me && m.phone ? waButton(m) : ""}
-          ${lead && m.id !== me && (!lockedNow || lateMoves) ? `<button class="x" type="button" data-act="remove" data-person="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from your team">Remove</button>` : ""}</li>`).join("")}${listed.map((l) => `<li class="m-listed"><i class="av av-listed" aria-hidden="true">${esc(initials(l.name))}</i><span class="m-name"><b>${esc(l.name)}</b><small>${lead && l.email ? esc(l.email) + " · " : ""}added by the leader</small></span>
+          ${lead && m.id !== me && (!lockedNow || !t.submission) ? `<button class="x" type="button" data-act="remove" data-person="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from your team">Remove</button>` : ""}</li>`).join("")}${listed.map((l) => `<li class="m-listed"><i class="av av-listed" aria-hidden="true">${esc(initials(l.name))}</i><span class="m-name"><b>${esc(l.name)}</b><small>${lead && l.email ? esc(l.email) + " · " : ""}added by the leader</small></span>
           ${l.phone ? waButton(l) : ""}
           ${lead && addOpen ? `<button class="x" type="button" data-act="remove-mate" data-id="${esc(l.id)}" data-name="${esc(l.name)}" aria-label="Remove ${esc(l.name)} from your team">Remove</button>` : ""}</li>`).join("")}${!addOpen ? "" : Array.from({ length: t.closed ? (lead && n < cap ? 1 : 0) : Math.max(0, cap - n) }, (_, i) => lead && i === 0
             ? `<li class="m-empty m-add"><button class="add-mate" type="button" data-act="add-mate"><i class="av av-empty" aria-hidden="true">+</i><span>Add a teammate</span></button></li>`
@@ -2162,7 +2161,12 @@
         }
         case "remove": {
           const m = S.team && S.team.members.find((x) => x.id === person);
-          if (m && confirm(`Remove ${m.name} from your team? They stay registered and can join another team${locked() ? " that's still open" : ""}. Then you can add someone new.`)) act(b, () => be.remove(person), `${first(m.name)} was removed. If they still have your team link, make a new one.`);
+          if (!m) return;
+          const t = S.team, n = t.members.length + (t.listed || []).length, canAdd = !locked() || !!t.lateOpen;
+          const msg = `Remove ${m.name} from your team? They stay registered and can join another team${locked() ? " that's still open" : ""}.`
+            + (canAdd ? " Then you can add someone new." : " Teams are locked, so you can't add someone new in their place.")
+            + (n - 1 < MIN ? ` Your team will have only ${n - 1} ${n - 1 === 1 ? "person" : "people"}, and teams need at least ${MIN} to take part.` : "");
+          if (confirm(msg)) act(b, () => be.remove(person), `${first(m.name)} was removed.${canAdd ? " If they still have your team link, make a new one." : ""}`);
           return;
         }
       }
