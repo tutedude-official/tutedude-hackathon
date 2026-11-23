@@ -272,7 +272,7 @@
         const t = byCode(code);
         if (!t) return null;
         const n = sizeOf(t.id);
-        return { name: t.name, size: n, max: capT(t), full: fullT(t), closed: closedT(t), reserved: listedOf(t.id).length, leader: first(db.people[t.leaderId].name), locked: locked() };
+        return { name: t.name, size: n, max: capT(t), full: fullT(t), closed: closedT(t), reserved: listedOf(t.id).length, leader: first(db.people[t.leaderId].name), locked: false, lateOpen: locked() };
       },
       // same as get_open_teams: teams missing your skill first, then the fullest
       openTeams(domain) {
@@ -421,7 +421,7 @@
       return {
         me: { id: uid, name: p.name, domain: p.domain, skill: p.skill, link: p.link, avatar: "", phone: p.phone, email: p.email || "", sessionOk: !!p.sessionOkAt, waOk: !!p.waOkAt },
         team: t ? {
-          id: t.id, name: t.name, leaderId: t.leaderId, code: t.code, open: !!t.open, closed: closedT(t), cap: capT(t),
+          id: t.id, name: t.name, leaderId: t.leaderId, code: t.code, open: !!t.open, closed: closedT(t), cap: capT(t), lateOpen: locked(),   // every team stays open after the lock (like live)
           submission: t.submission || null,
           problem: sizeOf(t.id) >= MIN && revealed() ? { text: "Demo problem statement: students lose track of what to revise before exams. Build a novel solution (the product, its website and a 60-second promo video).", link: "" } : null,
           members: ms.map((m) => Object.assign(pub(db.people[m]), { phone: db.people[m].phone || "", joinedAt: db.members[m].joinedAt })),
@@ -961,8 +961,8 @@
   function draw() {
     const lk = locked();
     $("#lockBar").hidden = !lk;
-    $("#lockBar").innerHTML = revealed() ? "<b>Teams are locked and final.</b> The problem statement is out: it's on your team page."
-      : `<b>Teams are locked and final.</b> The session starts at <b>7 PM</b>, and the problem is revealed on <b>${esc(revealText())}</b>.`;
+    $("#lockBar").innerHTML = revealed() ? "<b>Registration is closed.</b> The problem statement is out: it's on your team page."
+      : `<b>Registration is closed.</b> The session starts at <b>7 PM</b>, and the problem is revealed on <b>${esc(revealText())}</b>.`;
     $$("[data-reg-label]").forEach((b) => { b.textContent = S.me ? "My team" : lk ? "Closed" : "Register"; });
     $$(".cta-reg").forEach((b) => { b.textContent = S.team ? "Go to my team" : S.me ? (lk ? "Go to my page" : "Create or join a team") : lk ? "Registration closed" : "Register your team"; });
     $$(".cta-find").forEach((b) => { b.hidden = !!S.team || lk; });
@@ -971,7 +971,9 @@
     if (nf) nf.hidden = !GROUP || lk;
     const eb = $("#heroEyebrow");
     if (eb) eb.textContent = lk ? "TuteDude Buildathon 2026 · Registrations closed" : "TuteDude Buildathon 2026 · Registrations open";
-    $("#boardTitle").textContent = S.team ? "Your team" : S.me ? "You're not in a team yet" : lk ? "Teams are locked" : "Register your team";
+    $("#boardTitle").textContent = S.team ? "Your team" : S.me ? "You're not in a team yet" : lk ? "Registration closed" : "Register your team";
+    const ld = $("#heroLede");
+    if (ld && lk) ld.innerHTML = `Registration is closed. ${revealed() ? "The problem statement is out: build your solution with your team and" : `The problem statement comes out on <b>${esc(revealText())}</b>. Then build it and`} submit by <b>${esc(submitByText())}</b>.`;
     const st = S.stats;
     put("stats", st ? `<b>${Number(st.people) || 0}</b> registered${st.today ? ` · <b class="hot">+${Number(st.today) || 0}</b> in the last 24\u00a0h` : ""}` : "");
     put("notifyBar", notifyBarHtml());
@@ -1130,7 +1132,7 @@
 
   function meHtml() {
     if (!S.me) {
-      if (locked()) return `<div class="me me-empty"><div><h3>Teams are locked</h3>
+      if (locked()) return `<div class="me me-empty"><div><h3>Registration is closed</h3>
         <p>Registered already, but on another phone or browser? Get back to your team with your WhatsApp number and email.</p></div>
         <span class="row-btns"><button class="btn" type="button" data-act="reclaim-open">Get back to your team</button></span></div>`;
       if (S.loadErr && !S.be) return `<p class="empty">Couldn't connect. Check your internet and refresh the page.</p>`;
@@ -1354,7 +1356,7 @@
       h += `<div class="session-card warn"><div><h4>Only you are in ${esc(t.name)}</h4><p>Teams are locked, and a team needs at least ${MIN} people to take part. Message the organisers on the TuteDude Community.</p></div>
         <span class="row-btns">${orgBtns()}</span></div>`;
     }
-    if (t.lateOpen && !full) h += `<div class="session-card"><div><h4>${ic("sparkles")} Your team is open again</h4><p>The organisers opened your team, so you can still add teammates (up to ${cap} people) until they close it. ${lead ? "Share your team link, or tap <b>Add a teammate</b> below." : "Share your team link with anyone who wants to join."} New teammates see the problem statement here as soon as they join.</p></div></div>`;
+    if (t.lateOpen && !full) h += `<div class="session-card"><div><h4>${ic("sparkles")} Your team is open</h4><p>You can still add teammates (up to ${cap} people). ${lead ? "Share your team link, or tap <b>Add a teammate</b> below." : "Share your team link with anyone who wants to join."} New teammates see the problem statement here as soon as they join.</p></div></div>`;
     if (ok && addOpen && (n < MAX || listed.length)) h += inviteHtml(t, lead);
     if (ok && !full) h += groupHtml(false);
     if (ok || !lockedNow) h += sessionHtml(t);
@@ -1362,7 +1364,8 @@
 
     h += `<ul class="mlist">${t.members.map((m) => `<li>${avHtml(m)}<span class="m-name"><b>${plink(m.id, m.name + (m.id === me ? " (you)" : ""))}</b>${m.id === t.leaderId ? ` <span class="lead">Leader</span>` : ""}${hasSkill(m.domain) ? `<small>${esc(label(m.domain))}</small>` : ""}</span>
           ${m.id !== me && m.phone ? waButton(m) : ""}
-          ${lead && m.id !== me && (!lockedNow || !t.submission) ? `<button class="x" type="button" data-act="remove" data-person="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from your team">Remove</button>` : ""}</li>`).join("")}${listed.map((l) => `<li class="m-listed"><i class="av av-listed" aria-hidden="true">${esc(initials(l.name))}</i><span class="m-name"><b>${esc(l.name)}</b><small>${lead && l.email ? esc(l.email) + " · " : ""}added by the leader</small></span>
+          ${lead && m.id !== me && (!lockedNow || !t.submission) ? `<button class="x" type="button" data-act="remove" data-person="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from your team">Remove</button>` : ""}
+          ${m.id === me && lockedNow && !t.submission && t.members.length > 1 ? `<button class="x" type="button" data-act="switch-team" aria-label="Remove yourself from this team">Remove</button>` : ""}</li>`).join("")}${listed.map((l) => `<li class="m-listed"><i class="av av-listed" aria-hidden="true">${esc(initials(l.name))}</i><span class="m-name"><b>${esc(l.name)}</b><small>${lead && l.email ? esc(l.email) + " · " : ""}added by the leader</small></span>
           ${l.phone ? waButton(l) : ""}
           ${lead && addOpen ? `<button class="x" type="button" data-act="remove-mate" data-id="${esc(l.id)}" data-name="${esc(l.name)}" aria-label="Remove ${esc(l.name)} from your team">Remove</button>` : ""}</li>`).join("")}${!addOpen ? "" : Array.from({ length: t.closed ? (lead && n < cap ? 1 : 0) : Math.max(0, cap - n) }, (_, i) => lead && i === 0
             ? `<li class="m-empty m-add"><button class="add-mate" type="button" data-act="add-mate"><i class="av av-empty" aria-hidden="true">+</i><span>Add a teammate</span></button></li>`
@@ -1385,8 +1388,8 @@
       } else h += `<p class="leave-row"><span class="leave-note">${ic("lock")} <span>You joined this team more than ${LEAVE_MS / 36e5} hours ago, so it is final. Need help? Ask on the TuteDude Community.</span></span></p>`;
     } else if (!t.submission) {
       // after the lock: move to another team with room, with its team link (leave + join in one step, supabase.sql switch_team)
-      h += `<p class="leave-row"><span class="leave-note">${ic("users")} <span>Not happy with your team? Ask the leader of another team for their team link, then move there in one step.${lead ? " As the leader you can also remove a teammate." : ""}</span></span>
-        <button class="link small danger" type="button" data-act="switch-team">Leave and join another team</button></p>`;
+      h += `<p class="leave-row"><span class="leave-note">${ic("users")} <span>Want to change your team? Tap <b>Leave team</b> (or <b>Remove</b> next to your name) and paste the team link of your new team: you move there in one step.${lead ? " As the leader you can also remove a teammate." : ""}</span></span>
+        <button class="link small danger" type="button" data-act="switch-team">Leave team</button></p>`;
     }
     return h + `</div>`;
   }
@@ -1418,8 +1421,8 @@
     resetSwitch();
     showErr("#switchErr", "");
     const t = S.team;
-    $("#switchTitle").textContent = t ? "Join another team" : "Join a team";
-    $("#switchNote").textContent = t ? `Ask the leader of the team you want to join for their team link, and paste it here. You leave ${t.name} and join the new team in one step, so you stay in the Buildathon.`
+    $("#switchTitle").textContent = t ? "Want to change your team?" : "Join a team";
+    $("#switchNote").textContent = t ? `Paste the team link of your new team (ask its leader for it) and we'll put you in that team. You leave ${t.name} and join the new team in one step, so you stay in the Buildathon.`
       : "Ask the leader of the team you want to join for their team link, and paste it here.";
     $("#swCode").value = code ? showCode(code) : "";
     openDlg(switchDlg);

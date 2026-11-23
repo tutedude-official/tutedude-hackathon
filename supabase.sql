@@ -1798,6 +1798,7 @@ language sql immutable as $$
          ('whatsapp_session_rest_last', '“Join the live session at 7 PM” steps (everyone else)'),
          ('whatsapp_session_now_last', '“The live session has started, join now”'),
          ('whatsapp_doubt_last', '“Doubt-clearing session is live, join now” (23 Nov)'),
+         ('whatsapp_switch_last', '“How to change team / join a team” (23 Nov)'),
          ('whatsapp_problem_last', 'The problem statement'), ('whatsapp_last', 'Latest WhatsApp reminder / new-team message') $$;
 -- What WATI said about one send: {accepted, failed, done}. pg_net keeps answers for about 6 hours,
 -- so bd_wa_cache() writes the totals into the send itself once every answer is in.

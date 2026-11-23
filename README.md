@@ -74,6 +74,8 @@ A student can leave their team only in the first **24 hours** after joining it (
 
 **Changing team after the lock** (`switch_team` in supabase.sql). Anyone registered can move to another team with its team link: the team page has **Leave and join another team** (paste the link), and opening another team's link offers the move too. Leaving and joining happen in one step, so nobody drops out of the Buildathon by leaving. Someone without a team (e.g. the leader removed them) joins a team the same way. The new team needs room and "Team is full" off; leaders of every team can turn "Team is full" on, or pick the team size, after the lock too. A team that submitted its project is final: its members can't move out and nobody can move in. At most 6 team changes an hour per person. Brand-new registrations after the lock still work only with the link of a team the organisers reopened.
 
+On 23 Nov every team was opened (`update teams set late_open = true`): the site still says "Registration closed", but on every team page the link shows (copy / share), the leader can add and remove teammates, and a member's **Remove** (next to their own name) or **Leave team** opens "Want to change your team?", where they paste the new team's link. The organiser panel's **Close the reopened teams** closes them all again.
+
 ## Team is full (the leader closes the team)
 In the team link card the leader has two controls, until teams lock:
 - **Team is full: stop new members** (`set_team_closed`). On: the team link and its Join button say "Team is full" and the database refuses new members. It can be turned on from 2 people, and back off any time. A closed team that drops under 2 people (someone left or was removed) opens again by itself.
