@@ -1359,7 +1359,7 @@
         <span class="row-btns">${orgBtns()}</span></div>`;
     }
     if (t.lateOpen && !full) h += `<div class="session-card"><div><h4>${ic("sparkles")} Your team is open</h4><p>You can still add teammates (up to ${cap} people). ${lead ? "Share your team link, or tap <b>Add a teammate</b> below." : "Share your team link with anyone who wants to join."} New teammates see the problem statement here as soon as they join.</p></div></div>`;
-    if ((ok || lockedNow) && addOpen && (n < MAX || listed.length)) h += inviteHtml(t, lead);   // after the lock: a team of 1 shares its link too
+    if ((ok || lockedNow) && addOpen) h += inviteHtml(t, lead);   // every team sees its link (a full team's says "Team is full")
     if (ok && !full) h += groupHtml(false);
     if (ok || !lockedNow) h += sessionHtml(t);
     h += nextStepsHtml(t, lead);
