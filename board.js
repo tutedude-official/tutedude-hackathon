@@ -1299,6 +1299,7 @@
   function myTeamHtml() {
     const t = S.team, me = S.me.id, lead = amLeader(), lockedNow = locked(), listed = t.listed || [], n = t.members.length + listed.length, ok = n >= MIN;
     const addOpen = !lockedNow || !!t.lateOpen;   // reopened by the organisers after the lock: the link and "Add a teammate" work again
+    const lateMoves = lockedNow && !!t.lateOpen && !t.submission;   // …and members can leave, the leader can remove (until the team submits)
     const need = MIN - n, cap = capOf(t), full = teamFull(t);
     const status = (ok ? `<span class="ok">✓ Ready</span>` : `<span class="warn-chip">Needs ${need} more ${need === 1 ? "person" : "people"}</span>`)
       + (ok && full && addOpen ? ` <span class="full-chip">${ic("lock")} Team is full</span>` : "");
@@ -1331,7 +1332,7 @@
 
     h += `<ul class="mlist">${t.members.map((m) => `<li>${avHtml(m)}<span class="m-name"><b>${plink(m.id, m.name + (m.id === me ? " (you)" : ""))}</b>${m.id === t.leaderId ? ` <span class="lead">Leader</span>` : ""}${hasSkill(m.domain) ? `<small>${esc(label(m.domain))}</small>` : ""}</span>
           ${m.id !== me && m.phone ? waButton(m) : ""}
-          ${lead && m.id !== me && !lockedNow ? `<button class="x" type="button" data-act="remove" data-person="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from your team">Remove</button>` : ""}</li>`).join("")}${listed.map((l) => `<li class="m-listed"><i class="av av-listed" aria-hidden="true">${esc(initials(l.name))}</i><span class="m-name"><b>${esc(l.name)}</b><small>${lead && l.email ? esc(l.email) + " · " : ""}added by the leader</small></span>
+          ${lead && m.id !== me && (!lockedNow || lateMoves) ? `<button class="x" type="button" data-act="remove" data-person="${esc(m.id)}" aria-label="Remove ${esc(m.name)} from your team">Remove</button>` : ""}</li>`).join("")}${listed.map((l) => `<li class="m-listed"><i class="av av-listed" aria-hidden="true">${esc(initials(l.name))}</i><span class="m-name"><b>${esc(l.name)}</b><small>${lead && l.email ? esc(l.email) + " · " : ""}added by the leader</small></span>
           ${l.phone ? waButton(l) : ""}
           ${lead && addOpen ? `<button class="x" type="button" data-act="remove-mate" data-id="${esc(l.id)}" data-name="${esc(l.name)}" aria-label="Remove ${esc(l.name)} from your team">Remove</button>` : ""}</li>`).join("")}${!addOpen ? "" : Array.from({ length: t.closed ? (lead && n < cap ? 1 : 0) : Math.max(0, cap - n) }, (_, i) => lead && i === 0
             ? `<li class="m-empty m-add"><button class="add-mate" type="button" data-act="add-mate"><i class="av av-empty" aria-hidden="true">+</i><span>Add a teammate</span></button></li>`
@@ -1352,6 +1353,10 @@
         h += `<p class="leave-row"><span class="leave-note">${ic("hourglass")} <span>Not the right team? You can leave for the next <b>${hrs ? hrs + (hrs === 1 ? " hour" : " hours") : mins + (mins === 1 ? " minute" : " minutes")}</b>.</span></span>
           <button class="link small danger" type="button" data-act="leave">Leave team</button></p>`;
       } else h += `<p class="leave-row"><span class="leave-note">${ic("lock")} <span>You joined this team more than ${LEAVE_MS / 36e5} hours ago, so it is final. Need help? Ask on the TuteDude Community.</span></span></p>`;
+    } else if (lateMoves) {
+      // a team the organisers reopened: anyone can leave and join another open team with its link
+      h += `<p class="leave-row"><span class="leave-note">${ic("users")} <span>Your team is open again, so you can leave it and join another team that's still open, with its team link.${lead ? " As the leader you can also remove someone and add a new teammate." : ""}</span></span>
+        <button class="link small danger" type="button" data-act="leave">Leave team</button></p>`;
     }
     return h + `</div>`;
   }
@@ -2152,12 +2157,12 @@
           const n = t.members.length, next = t.members.find((m) => m.id !== S.me.id);
           const q = n === 1 ? `Leave ${t.name}? You're the only one registered in it, so the team${(t.listed || []).length ? " (and the teammates you added)" : ""} will be deleted.`
             : amLeader() ? `Leave ${t.name}? ${next.name} becomes the leader.` : `Leave ${t.name}?`;
-          if (confirm(q + " You stay registered and can create or join another team before teams lock.")) act(b, () => be.leave(), `You left ${t.name}.`);
+          if (confirm(q + (locked() ? " You stay registered and can join another team that's still open, with its team link." : " You stay registered and can create or join another team before teams lock."))) act(b, () => be.leave(), `You left ${t.name}.`);
           return;
         }
         case "remove": {
           const m = S.team && S.team.members.find((x) => x.id === person);
-          if (m && confirm(`Remove ${m.name} from your team? They stay registered and can join another team.`)) act(b, () => be.remove(person), `${first(m.name)} was removed. If they still have your team link, make a new one.`);
+          if (m && confirm(`Remove ${m.name} from your team? They stay registered and can join another team${locked() ? " that's still open" : ""}. Then you can add someone new.`)) act(b, () => be.remove(person), `${first(m.name)} was removed. If they still have your team link, make a new one.`);
           return;
         }
       }

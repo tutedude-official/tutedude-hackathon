@@ -856,15 +856,19 @@ end $$;
 create or replace function bd_leave_hours() returns int language sql immutable as $$ select 24 $$;
 create or replace function leave_team() returns void
 language plpgsql security definer set search_path = public as $$
-declare uid uuid := bd_me(); nm text; tid uuid; was_lead boolean; ja timestamptz; sz int;
+declare uid uuid := bd_me(); nm text; tid uuid; was_lead boolean; ja timestamptz; sz int; late boolean;
 begin
-  perform bd_open();
+  perform bd_open_for((select team_id from members where person_id = uid));   -- after the lock: only a reopened team
   perform pg_advisory_xact_lock(7231001);
-  select p.name, m.team_id, t.leader_id = uid, m.joined_at, t.size into nm, tid, was_lead, ja, sz
+  select p.name, m.team_id, t.leader_id = uid, m.joined_at, t.size, now() > bd_deadline() and t.late_open into nm, tid, was_lead, ja, sz, late
     from people p join members m on m.person_id = p.id join teams t on t.id = m.team_id where p.id = uid;
   if tid is null then return; end if;
-  -- leaving is for the first bd_leave_hours() hours after joining; someone alone in a team can always leave
-  if sz > 1 and now() > ja + make_interval(hours => bd_leave_hours()) then
+  if late and exists (select 1 from submissions where team_id = tid) then
+    raise exception 'Your team already submitted its project, so the team is final.';
+  end if;
+  -- leaving is for the first bd_leave_hours() hours after joining; someone alone in a team can always leave,
+  -- and so can anyone in a team the organisers reopened after the lock
+  if sz > 1 and not late and now() > ja + make_interval(hours => bd_leave_hours()) then
     raise exception 'You can leave a team only in the first % hours after joining. Need help? Message the organisers on the TuteDude Community.', bd_leave_hours();
   end if;
   perform bd_move(uid);
@@ -879,16 +883,20 @@ create or replace function remove_member(p_person uuid) returns void
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tname text; pname text;
 begin
-  perform bd_open();
+  perform bd_open_for((select id from teams where leader_id = uid));   -- after the lock: only a reopened team
   perform pg_advisory_xact_lock(7231001);  -- same lock as joins, taken first: no deadlocks
   select id, name into tid, tname from teams where leader_id = uid;
   if tid is null then raise exception 'Only the team leader can remove people.'; end if;
+  if now() > bd_deadline() and exists (select 1 from submissions where team_id = tid) then
+    raise exception 'Your team already submitted its project, so the team is final.';
+  end if;
   if p_person = uid then raise exception 'You can''t remove yourself. Use "Leave team" instead.'; end if;
   if not exists (select 1 from members where person_id = p_person and team_id = tid) then return; end if;
   select name into pname from people where id = p_person;
   perform bd_take_out(p_person);
   perform bd_say(tid, pname || ' was removed by the leader.');
-  perform bd_notify(p_person, 'Team update', 'You were removed from ' || tname || '. Join your team again with its link, or create a new team.', 'team-none');
+  perform bd_notify(p_person, 'Team update', 'You were removed from ' || tname || case when now() > bd_deadline()
+    then '. You can join another team that is still open, with its team link.' else '. Join your team again with its link, or create a new team.' end, 'team-none');
 end $$;
 
 -- the leader makes a new team link (the old one stops working), e.g. if it was shared too widely
