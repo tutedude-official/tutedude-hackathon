@@ -284,8 +284,8 @@
           .slice(0, 30);
       },
       submitProject(uid, p) {
-        const t = leaderTeam(uid), title = clean(p.title), summary = clean(p.summary);
-        if (!t) fail("Only the team leader can submit the project.");
+        const t = db.teams[teamOf(uid)], title = clean(p.title), summary = clean(p.summary);
+        if (!t) fail("Join a team to submit a project.");
         if (submitEarly()) fail("Submissions open on " + submitDayText() + ".");
         if (!submitOpen()) fail("Submissions are closed.");
         if (sizeOf(t.id) < MIN) fail(`A team needs at least ${MIN} people to take part.`);
@@ -295,8 +295,8 @@
         if (!urlOk(p.product)) fail("Paste the full link to your project (it starts with https://).");
         if (p.site && !urlOk(p.site)) fail("The website link doesn't look right. Paste the full link, or leave it empty.");
         if (p.video && !urlOk(p.video)) fail("The video link doesn't look right. Paste the full link, or leave it empty.");
-        t.submission = { title, summary, product: p.product, site: p.site || "", video: p.video || "", at: now() };
-        say(t.id, `Your leader submitted the project: ${title}`);
+        t.submission = { title, summary, product: p.product, site: p.site || "", video: p.video || "", at: now(), by: db.people[uid].name };
+        say(t.id, `${first(db.people[uid].name)} submitted the project: ${title}`);
         return { ok: true };
       },
       addTeammate(uid, nm, em, ph) {
@@ -1106,28 +1106,28 @@
       ${P.link ? `<span class="row-btns"><a class="btn btn-sm" href="${esc(safeUrl(P.link))}" target="_blank" rel="noopener">Open the full problem statement ↗</a></span>` : ""}</div>`;
   }
 
-  // the project: the leader submits it here once, between the problem statement and the deadline
+  // the project: anyone in the team submits it here, once per team, between the problem statement and the deadline
   const submitByText = () => istText(SUBMIT_BY, "the deadline");
   const submitDayText = () => { const t = isNaN(SUBMIT_FROM) ? SUBMIT_BY : SUBMIT_FROM; return isNaN(t) ? "submission day" : istText(t, "").split(", ").slice(0, 2).join(", "); };
   const submitTimeText = () => (isNaN(SUBMIT_BY) ? "the deadline" : istText(SUBMIT_BY, "").split(", ").pop());
   function submissionHtml(t, lead) {
     if (!revealed() || teamSize(t) < MIN) return "";
-    const s = t.submission, leader = (t.members.find((m) => m.id === t.leaderId) || {}).name || "Your leader";
+    const s = t.submission;
     if (s) {
       const link = (u, label) => (u ? `<a class="btn btn-sm btn-ghost" href="${esc(safeUrl(u))}" target="_blank" rel="noopener">${label} ↗</a>` : "");
       return `<div class="submit-card done"><p class="kicker">${ic("check")} Project submitted</p>
         <h4>${esc(s.title)}</h4><p class="sub-sum">${esc(s.summary)}</p>
         <span class="row-btns">${link(s.product, "Project")}${link(s.site, "Website")}${link(s.video, "Promo video")}</span>
-        <p class="small muted">Submitted ${esc(istText(s.at, ""))}. A submission can't be changed.</p></div>`;
+        <p class="small muted">Submitted${s.by ? ` by ${esc(s.by)}` : ""} ${esc(istText(s.at, ""))}. A submission can't be changed.</p></div>`;
     }
     if (submitEarly()) return `<div class="submit-card soon"><p class="kicker">${ic("calendar")} Submission day: ${esc(submitDayText())}</p>
-      <p>Build your project this week. On <b>${esc(submitDayText())}</b> ${lead ? "you submit it here" : `${esc(first(leader))}, your leader, submits it here`}: project link, website, promo video and a short description.
+      <p>Build your project this week. On <b>${esc(submitDayText())}</b> anyone in your team can submit it here: project link, website, promo video and a short description.
         Submissions are open on that day only, until <b>${esc(submitTimeText())}</b>.</p></div>`;
     if (!submitOpen()) return `<div class="submit-card closed"><p class="kicker">${ic("lock")} Submissions are closed</p><p>Your team didn't submit a project before ${esc(submitByText())}.</p></div>`;
     return `<div class="submit-card"><p class="kicker">${ic("rocket")} Submit your project</p>
-      <p>${lead ? "Submissions are open. Submit your project here as soon as it's ready: project link, website, promo video and a short description." : `Submissions are open. ${esc(first(leader))}, your leader, submits the project here as soon as it's ready.`}
-        You don't have to wait for the last day: it closes at <b>${esc(submitByText())}</b>. Only one submission, and it can't be changed.</p>
-      ${lead ? `<span class="row-btns"><button class="btn btn-sm" type="button" data-act="submit-open">Submit project</button></span>` : ""}</div>`;
+      <p>Submissions are open. Anyone in your team can submit the project here as soon as it's ready: project link, website, promo video and a short description.
+        You don't have to wait for the last day: it closes at <b>${esc(submitByText())}</b>. Your team submits once and it can't be changed, so agree with your team on who submits.</p>
+      <span class="row-btns"><button class="btn btn-sm" type="button" data-act="submit-open">Submit project</button></span></div>`;
   }
 
   function meHtml() {
@@ -1269,7 +1269,7 @@
       { ok: !!S.me.sessionOk, text: "You agreed to do your product discussion on TuteDude Sessions" },
       { ok: n >= MIN, text: n >= MIN ? `Your team has ${n} people${!teamFull(t) && (!locked() || t.lateOpen) ? ` (room for ${capOf(t) - n} more)` : ""}` : `Get your teammates in: send them the team link (at least ${MIN} people, up to ${capOf(t)})` },
       { ok: revealed(), text: `The problem statement appears here on <b>${esc(revealText())}</b>. Then you have 1 week to build` },
-      { ok: !!t.submission, text: `Your leader submits the project here on <b>${esc(submitDayText())}</b>, before ${esc(submitTimeText())}` }
+      { ok: !!t.submission, text: `Anyone in your team submits the project here, before <b>${esc(submitByText())}</b>` }
     ];
     const current = steps.findIndex((s) => !s.ok);
     return `<div class="next-steps"><h4>What to do now</h4><ol>${steps.map((s, i) =>
@@ -1996,9 +1996,9 @@
     btn.disabled = false;
   }
 
-  /* ---------- the leader submits the project (once) ---------- */
+  /* ---------- anyone in the team submits the project (once per team) ---------- */
   function openSubmit() {
-    if (!amLeader() || !S.team || S.team.submission) return;
+    if (!S.team || S.team.submission) return;
     if (submitEarly()) { toast("Submissions open on " + submitDayText() + ".", true); return; }
     if (!submitOpen()) { toast("Submissions are closed.", true); return; }
     $("#subKicker").textContent = "Submit by " + submitByText();

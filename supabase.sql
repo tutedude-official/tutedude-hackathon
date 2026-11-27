@@ -137,7 +137,7 @@ create table if not exists bd_lookups (
   at timestamptz not null default now()
 );
 create index if not exists bd_lookups_idx on bd_lookups (user_id, at);
--- one project per team, submitted once by the leader (an organiser can remove it so the team can submit again)
+-- one project per team, submitted once by anyone in the team (an organiser can remove it so the team can submit again)
 create table if not exists submissions (
   team_id uuid primary key references teams(id) on delete cascade,
   title text not null,
@@ -548,9 +548,10 @@ begin
         'problem', case when now() >= bd_reveal() and t.size >= bd_min() then json_build_object(
                      'text', coalesce((select value from bd_settings where key = 'problem_statement'), ''),
                      'link', coalesce((select value from bd_settings where key = 'problem_link'), '')) end,
-        -- the project the leader submitted (null until then)
+        -- the project someone in the team submitted (null until then), and who submitted it
         'submission', (select json_build_object('title', s.title, 'summary', s.summary, 'product', s.product_url, 'site', s.site_url, 'video', s.video_url,
-                                                'at', (extract(epoch from s.created_at) * 1000)::bigint) from submissions s where s.team_id = t.id),
+                                                'at', (extract(epoch from s.created_at) * 1000)::bigint,
+                                                'by', (select sp.name from people sp where sp.id = s.submitted_by)) from submissions s where s.team_id = t.id),
         -- teammates' WhatsApp numbers: only for members of this same team
         'members', (select json_agg(json_build_object('id', p.id, 'name', p.name, 'domain', p.domain, 'skill', p.skill, 'link', p.link, 'avatar', p.avatar,
                                                       'phone', p.phone, 'joinedAt', (extract(epoch from m.joined_at) * 1000)::bigint) order by m.joined_at)
@@ -1153,7 +1154,7 @@ create or replace function bd_url_ok(u text) returns boolean
 language sql immutable as $$
   select coalesce(u, '') ~ '^https?://[^[:space:]<>"'']+\.[^[:space:]<>"'']+$' and char_length(u) <= 300
 $$;
--- The leader submits the team's project: once, between the problem statement and the deadline.
+-- Anyone in the team submits the team's project: once per team, between the problem statement and the deadline.
 create or replace function submit_project(p_title text, p_summary text, p_product text, p_site text default '', p_video text default '') returns json
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tsize int; ttl text := bd_clean(p_title); sm text := bd_clean(p_summary);
@@ -1161,8 +1162,8 @@ declare uid uuid := bd_me(); tid uuid; tsize int; ttl text := bd_clean(p_title);
 begin
   perform bd_account_ok(uid);
   perform pg_advisory_xact_lock(7231001);
-  select id, size into tid, tsize from teams where leader_id = uid;
-  if tid is null then raise exception 'Only the team leader can submit the project.'; end if;
+  select t.id, t.size into tid, tsize from members m join teams t on t.id = m.team_id where m.person_id = uid;
+  if tid is null then raise exception 'Join a team to submit a project.'; end if;
   if now() < bd_submit_from() then raise exception 'Submissions open on %.', to_char(bd_submit_from() at time zone 'Asia/Kolkata', 'FMDD Mon'); end if;
   if now() > bd_submit_by() then raise exception 'Submissions are closed.'; end if;
   if tsize < bd_min() then raise exception 'A team needs at least % people to take part.', bd_min(); end if;
@@ -1173,7 +1174,7 @@ begin
   if st <> '' and not bd_url_ok(st) then raise exception 'The website link doesn''t look right. Paste the full link, or leave it empty.'; end if;
   if vd <> '' and not bd_url_ok(vd) then raise exception 'The video link doesn''t look right. Paste the full link, or leave it empty.'; end if;
   insert into submissions (team_id, title, summary, product_url, site_url, video_url, submitted_by) values (tid, ttl, sm, pr, st, vd, uid);
-  perform bd_say(tid, 'Your leader submitted the project: ' || ttl);
+  perform bd_say(tid, coalesce(split_part((select name from people where id = uid), ' ', 1), 'Your teammate') || ' submitted the project: ' || ttl);
   return json_build_object('ok', true);
 end $$;
 
@@ -1564,17 +1565,18 @@ begin
   perform bd_admin_only();
   return coalesce((select json_agg(json_build_object('teamId', t.id, 'team', t.name, 'teamCode', t.code, 'teamSize', t.size,
       'leader', p.name, 'leaderWhatsapp', p.phone, 'leaderEmail', p.email,
+      'submittedBy', sp.name, 'submittedByWhatsapp', sp.phone, 'submittedByEmail', sp.email,
       'title', s.title, 'summary', s.summary, 'projectLink', s.product_url, 'websiteLink', s.site_url, 'videoLink', s.video_url,
       'submittedAt', s.created_at) order by s.created_at)
-    from submissions s join teams t on t.id = s.team_id left join people p on p.id = t.leader_id), '[]'::json);
+    from submissions s join teams t on t.id = s.team_id left join people p on p.id = t.leader_id left join people sp on sp.id = s.submitted_by), '[]'::json);
 end $$;
--- remove a team's submission so its leader can submit again (wrong link, etc.)
+-- remove a team's submission so the team can submit again (wrong link, etc.)
 create or replace function admin_delete_submission(p_team uuid) returns void
 language plpgsql security definer set search_path = public as $$
 begin
   perform bd_admin_only();
   delete from submissions where team_id = p_team;
-  if found then perform bd_say(p_team, 'An organiser reopened your submission. Your leader can submit the project again.'); end if;
+  if found then perform bd_say(p_team, 'An organiser reopened your submission. Anyone in your team can submit the project again.'); end if;
 end $$;
 revoke execute on function admin_submissions(), admin_delete_submission(uuid) from public, anon;
 grant execute on function admin_submissions(), admin_delete_submission(uuid) to authenticated;

@@ -142,9 +142,9 @@ Before the first WhatsApp button opens (the community, a teammate, the team link
 ## Project submission
 Teams submit on this same site, from their team page.
 - **When:** any time in the submission window, from `submitFrom` to `submitBy` in config.js: from the problem statement (Sat, 21 Nov 2026, 7:15 PM IST) to Sat, 28 Nov 2026, 11:59 PM IST. A team submits as soon as its project is ready; it doesn't wait for the last day. If you change either time, change `bd_submit_from()` / `bd_submit_by()` in supabase.sql too and run the file again.
-- **Who:** the team leader, **once**. A submission can't be edited. The team must have at least 2 people.
+- **Who:** anyone in the team (since 27 Nov 2026; before that only the leader), **once per team**. A submission can't be edited. The team must have at least 2 people. The team page and the organiser panel show who submitted.
 - **What:** project name, 2 to 3 lines about it, project link (required), website link and promo video link (asked for, can be left empty after a warning).
-- **Organisers:** panel → **Submissions** shows every project with its links and the leader's contact, **Download CSV** exports them, and **Reopen** removes one submission so that leader can submit again (the team gets a notification).
+- **Organisers:** panel → **Submissions** shows every project with its links, the leader's contact and who submitted it, **Download CSV** exports them, and **Reopen** removes one submission so the team can submit again (the team gets a notification).
 - To wipe test submissions: `delete from submissions;`
 
 ## TuteDude student check
