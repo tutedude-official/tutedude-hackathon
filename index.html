@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <!-- what this page may load: only its own files, Supabase, Google Fonts/photos and the Drive video backup -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src https://drive.google.com; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; media-src 'self' blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://buildathon-notify.vercel.app; frame-src https://drive.google.com; worker-src 'self'; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>TuteDude Buildathon · ₹10,000 in prizes for your team</title>
   <meta name="description" content="Exclusive for TuteDude students. Team up, solve a real problem with a novel solution and win ₹5,000, ₹3,000 or ₹2,000. Free, fully online, certificate for every participant. Register your team of 2 to 4 in 1 minute. Teams lock 20 Nov.">
@@ -445,6 +445,7 @@
         <div class="field"><label for="sSite">Website link</label><input id="sSite" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://"></div>
         <div class="field"><label for="sVideo">Promo video link</label><input id="sVideo" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://  (YouTube, Drive)"></div>
       </div>
+      <p class="form-note sub-public">🔓 Every link must open for anyone: Google Docs and Drive set to “Anyone with the link”, a public GitHub repo, a YouTube video that isn't private. We check this when you submit.</p>
       <div class="sub-check">
         <p><b>Are you sure your project is ready?</b> Before you submit, check that you have:</p>
         <ul>

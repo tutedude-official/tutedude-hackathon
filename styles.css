@@ -1324,3 +1324,7 @@ body.urgent .urgency .u-time { display: inline-block; }
 .leave-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; justify-content: flex-end; }
 .leave-note { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--muted); }
 .leave-note .ic { flex: none; width: 1.1em; height: 1.1em; }
+
+/* submit form: link check messages (one paragraph per link) */
+#subErr { white-space: pre-line; }
+.sub-public { margin: -4px 0 0; }

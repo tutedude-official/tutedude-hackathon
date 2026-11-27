@@ -1998,12 +1998,40 @@
     if (!S.team || S.team.submission) return;
     if (submitEarly()) { toast("Submissions open on " + submitDayText() + ".", true); return; }
     if (!submitOpen()) { toast("Submissions are closed.", true); return; }
+    clearBad(subDlg);
     $("#subKicker").textContent = "Submit by " + submitByText();
     $("#subUntil").textContent = submitByText();
     $("#sSure").checked = false;
     showErr("#subErr", "");
     openDlg(subDlg);
     setTimeout(() => $("#sTitle").focus(), 50);
+  }
+  // Are the submitted links open to everyone? The notify server asks Google (Docs, Drive, Sheets, Slides, Forms,
+  // Sites), GitHub and YouTube (push-server/api/link-check.js). Other links aren't checked. When the check can't
+  // run or gets no clear answer, the submission goes through: a busy service never blocks a team.
+  const LINK_CHECK = "https://buildathon-notify.vercel.app/api/link-check";
+  const LINK_FIELDS = { product: "#sProduct", site: "#sSite", video: "#sVideo" };
+  const LINK_NAMES = { product: "project link", site: "website link", video: "promo video link" };
+  async function closedLinks(p) {
+    const keys = Object.keys(LINK_FIELDS).filter((k) => p[k]);
+    let res = [];
+    try {
+      const ctl = typeof AbortController === "function" ? new AbortController() : null;
+      const timer = ctl && setTimeout(() => ctl.abort(), 15000);
+      const r = await fetch(LINK_CHECK, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ links: keys.map((k) => p[k]) }), signal: ctl ? ctl.signal : undefined });
+      clearTimeout(timer);
+      res = (await r.json()).results || [];
+    } catch (_) { return []; }
+    return keys.map((k, i) => ({ key: k, x: res[i] })).filter(({ x }) => x && (x.status === "private" || x.status === "missing")).map(({ key, x }) => {
+      const what = `Your ${LINK_NAMES[key]}`;
+      let text;
+      if (x.kind === "github") text = `${what} isn't public: GitHub shows this repo only to people with access, or the link is wrong. Make it public: open the repo on GitHub → Settings → scroll to "Danger Zone" → Change visibility → Public. Then submit again.`;
+      else if (x.status === "missing") text = `${what} doesn't open: ${x.kind === "youtube" ? "YouTube" : "Google"} says it doesn't exist. Copy the link again and paste it here.`;
+      else if (x.kind === "youtube") text = `${what} is a private YouTube video, so the judges can't watch it. In YouTube Studio, set it to Unlisted or Public. Then submit again.`;
+      else text = `${what} isn't public, so the judges can't open it. Open the file or folder in Google, tap Share, and under "General access" choose "Anyone with the link" (Viewer). Then submit again.`;
+      return { key, text };
+    });
   }
   async function submitProjectForm(e) {
     e.preventDefault();
@@ -2015,11 +2043,24 @@
     if (p.site && !urlOk(p.site)) return showErr("#subErr", "The website link doesn't look right. Paste the full link, or leave it empty.");
     if (p.video && !urlOk(p.video)) return showErr("#subErr", "The video link doesn't look right. Paste the full link, or leave it empty.");
     if (!$("#sSure").checked) return showErr("#subErr", "Tick the box: a submission can't be changed.");
+    const btn = $("#subSubmit");
+    // the judges must be able to open every link: no private Google file, GitHub repo or YouTube video
+    clearBad(subDlg);
+    showErr("#subErr", "");
+    btn.disabled = true;
+    btn.textContent = "Checking your links…";
+    const closed = await closedLinks(p);
+    btn.disabled = false;
+    btn.textContent = "Submit project";
+    if (closed.length) {
+      closed.forEach((c) => { const i = $(LINK_FIELDS[c.key]); i.classList.add("is-bad"); i.setAttribute("aria-invalid", "true"); });
+      $(LINK_FIELDS[closed[0].key]).focus();
+      return showErr("#subErr", closed.map((c) => c.text).join("\n\n"));
+    }
     // one last check: a submission is final, and there is time until the deadline
     const missing = [!p.site && "website link", !p.video && "promo video link"].filter(Boolean);
     if (!confirm(`Are you sure you've finished building your app or website?\n\nYou can submit only once, and it can't be changed afterwards. You still have time until ${submitByText()}.`
       + (missing.length ? `\n\nYou haven't added the ${missing.join(" or the ")}, and you can't add it later.` : "") + "\n\nSubmit now?")) return;
-    const btn = $("#subSubmit");
     btn.disabled = true;
     try {
       await whenReady();
