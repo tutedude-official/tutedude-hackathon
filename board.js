@@ -967,8 +967,11 @@
     $$(".cta-reg").forEach((b) => { b.textContent = S.team ? "Go to my team" : S.me ? (lk ? "Go to my page" : "Create or join a team") : lk ? "Registration closed" : "Register your team"; });
     $$(".cta-find").forEach((b) => { b.hidden = !!S.team || lk; });
     $$(".cta-watch").forEach((b) => { b.hidden = !FV || lk || !!(S.team && teamSize(S.team) >= MIN); });
-    const nf = $("#navFind");
-    if (nf) nf.hidden = !GROUP || lk;
+    // while submissions are open, "Submit project" takes the place of Register / My team in the header and the menu
+    // (until the team has submitted)
+    const subNav = submitOpen() && !(S.team && S.team.submission);
+    $$("[data-submit-btn]").forEach((b) => { b.hidden = !subNav; });
+    $$("[data-reg-btn]").forEach((b) => { b.hidden = subNav; });
     const eb = $("#heroEyebrow");
     if (eb) eb.textContent = lk ? "TuteDude Buildathon 2026 · Registrations closed" : "TuteDude Buildathon 2026 · Registrations open";
     $("#boardTitle").textContent = S.team ? "Your team" : S.me ? "You're not in a team yet" : lk ? "Registration closed" : "Register your team";
@@ -1208,22 +1211,6 @@
     openDlg(findDlg);
     if (v.ended) v.currentTime = 0;
     if (v.paused) v.play().catch(() => { v.muted = true; v.play().catch(() => {}); });   // muted if the browser insists: the video has captions
-  }
-
-  // "Find your team" in the menu: opens the WhatsApp community (the rules box comes first, like every WhatsApp link)
-  // and scrolls the page to the "No team yet? Find one here" card, or to the team board when the card isn't shown
-  const navFind = $("#navFind");
-  if (navFind && GROUP) {
-    navFind.href = GROUP; navFind.target = "_blank"; navFind.rel = "noopener";
-    navFind.innerHTML = WA_ICON + "<span>Find your team</span>";
-    document.addEventListener("click", (e) => {
-      if (!e.target.closest || !e.target.closest("#navFind")) return;
-      const nav = $("#nav");
-      if (nav && nav.classList.contains("open")) $("#navToggle").click();   // the WhatsApp rules box can stop the menu's own close
-      const card = $("#mePanel .group-card");
-      (card || $("#board")).scrollIntoView({ behavior: "smooth", block: card ? "center" : "start" });
-      if (card) { card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash"); }
-    }, true);
   }
 
   // the team link, with copy + WhatsApp buttons (and, for the leader, "Team is full" + the team size)
@@ -1996,6 +1983,16 @@
     btn.disabled = false;
   }
 
+  // "Submit project" in the header and the menu: the submit form, or what's missing before the team can submit
+  function navSubmit() {
+    const toBoard = () => $("#board").scrollIntoView({ behavior: "smooth" });
+    if (!S.me) { openReclaim(); return; }   // registered on another phone or browser: get back to the team first
+    if (!S.team) { toBoard(); toast("Join a team to submit a project.", true); return; }
+    if (S.team.submission) { toBoard(); toast("Your team has already submitted its project."); return; }
+    if (teamSize(S.team) < MIN) { toBoard(); toast(`A team needs at least ${MIN} people to submit.`, true); return; }
+    openSubmit();
+  }
+
   /* ---------- anyone in the team submits the project (once per team) ---------- */
   function openSubmit() {
     if (!S.team || S.team.submission) return;
@@ -2199,6 +2196,7 @@
         case "register-find": return openRegister("find");
         case "add-mate": return openMate();
         case "submit-open": return openSubmit();
+        case "nav-submit": return navSubmit();
         case "remove-mate":
           if (confirm(`Remove ${b.dataset.name} from your team?`)) act(b, () => be.removeTeammate(b.dataset.id), `${b.dataset.name} was removed from your team.`);
           return;
