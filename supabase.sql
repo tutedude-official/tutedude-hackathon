@@ -1799,6 +1799,7 @@ language sql immutable as $$
          ('whatsapp_session_now_last', '“The live session has started, join now”'),
          ('whatsapp_doubt_last', '“Doubt-clearing session is live, join now” (23 Nov)'),
          ('whatsapp_switch_last', '“How to change team / join a team” (23 Nov)'),
+         ('whatsapp_motivate_last', '“Prizes, certificates, and learn to build a product: start building” (25 Nov)'),
          ('whatsapp_problem_last', 'The problem statement'), ('whatsapp_last', 'Latest WhatsApp reminder / new-team message') $$;
 -- What WATI said about one send: {accepted, failed, done}. pg_net keeps answers for about 6 hours,
 -- so bd_wa_cache() writes the totals into the send itself once every answer is in.
@@ -2001,3 +2002,84 @@ end $$;
 --        (t.leader_id = p.id) as leader, (p.session_ok_at is not null) as agreed_to_session
 -- from teams t join members m on m.team_id = t.id join people p on p.id = m.person_id
 -- order by t.created_at, m.joined_at;
+
+-- ---------- WhatsApp inbox: what people write back to the Buildathon WhatsApp number (WATI) ----------
+-- WATI calls the notify server for every message someone sends us (webhook event "message" →
+-- push-server/api/wati-hook.js), which saves it here with bd_wa_inbox_add. Answers sent from the organiser
+-- panel (push-server/api/wa-admin.js) are saved too (mine = true). Organiser panel → WhatsApp shows it live.
+create table if not exists wa_inbox (
+  id text primary key,                          -- WATI's message id (answers from the panel: 'out-…')
+  phone text not null,                          -- 91XXXXXXXXXX
+  name text not null default '',                -- their WhatsApp name
+  body text not null default '',
+  kind text not null default 'text',            -- text, image, audio, … (WATI's type)
+  mine boolean not null default false,          -- true = an organiser's answer from the panel
+  sent_by text not null default '',             -- that organiser's email
+  at timestamptz not null default now()
+);
+create index if not exists wa_inbox_at_idx on wa_inbox (at desc);
+create index if not exists wa_inbox_phone_idx on wa_inbox (phone, at desc);
+alter table wa_inbox enable row level security;   -- no policies: only the functions below touch it
+revoke all on wa_inbox from anon, authenticated;
+
+-- the notify server saves messages (it knows notify_secret). A message the webhook and a catch-up scan both saw
+-- (with different ids) is kept once: same number, same text, within 10 seconds.
+create or replace function bd_wa_inbox_add(p_secret text, p_items json) returns int
+language plpgsql security definer set search_path = public as $$
+declare s text := (select value from bd_settings where key = 'notify_secret'); n int := 0; e json; ph text; b text; t timestamptz; mn boolean;
+begin
+  if coalesce(s, '') = '' or p_secret is distinct from s then raise exception 'forbidden'; end if;
+  for e in select * from json_array_elements(case when json_typeof(p_items) = 'array' then p_items else '[]'::json end) loop
+    ph := regexp_replace(coalesce(e ->> 'phone', ''), '\D', '', 'g');
+    continue when ph !~ '^[0-9]{10,15}$' or coalesce(e ->> 'id', '') = '';
+    b := left(coalesce(e ->> 'body', ''), 4000);
+    t := coalesce((e ->> 'at')::timestamptz, now());
+    mn := coalesce((e ->> 'mine')::boolean, false);
+    continue when exists (select 1 from wa_inbox w where w.phone = ph and w.body = b and w.mine = mn and abs(extract(epoch from w.at - t)) < 10);
+    insert into wa_inbox (id, phone, name, body, kind, mine, sent_by, at)
+    values (left(e ->> 'id', 100), ph, left(coalesce(e ->> 'name', ''), 80), b, left(coalesce(nullif(e ->> 'kind', ''), 'text'), 30), mn,
+      left(coalesce(e ->> 'sentBy', ''), 120), t)
+    on conflict (id) do nothing;
+    if found then n := n + 1; end if;
+  end loop;
+  return n;
+end $$;
+revoke execute on function bd_wa_inbox_add(text, json) from public;
+grant execute on function bd_wa_inbox_add(text, json) to anon, authenticated;
+
+-- Organiser panel → WhatsApp: one row per person who wrote, newest first, with their registration and team
+create or replace function admin_wa_inbox(p_limit int default 300) returns json
+language plpgsql stable security definer set search_path = public as $$
+begin
+  perform bd_admin_only();
+  return coalesce((select json_agg(x.j order by x.last_at desc) from (
+    select c.last_at, json_build_object('phone', c.phone, 'waName', c.wa_name, 'lastAt', c.last_at, 'lastIn', c.last_in,
+      'last', c.last_body, 'lastKind', c.last_kind, 'lastMine', c.last_mine, 'incoming', c.incoming,
+      'name', p.name, 'email', p.email, 'team', t.name, 'teamCode', t.code,
+      'teamSize', (select count(*) from members mm where mm.team_id = t.id),
+      'submitted', exists (select 1 from submissions s where s.team_id = t.id)) as j
+    from (select w.phone, max(w.at) as last_at, max(w.at) filter (where not w.mine) as last_in,
+            count(*) filter (where not w.mine) as incoming,
+            (array_agg(w.name order by w.at desc) filter (where not w.mine))[1] as wa_name,
+            (array_agg(w.body order by w.at desc))[1] as last_body,
+            (array_agg(w.kind order by w.at desc))[1] as last_kind,
+            (array_agg(w.mine order by w.at desc))[1] as last_mine
+          from wa_inbox w group by w.phone
+          order by max(w.at) desc limit greatest(1, least(coalesce(p_limit, 300), 1000))) c
+    left join lateral (select pp.* from people pp where pp.phone <> '' and right(regexp_replace(pp.phone, '\D', '', 'g'), 10) = right(c.phone, 10)
+                       order by pp.created_at desc limit 1) p on true
+    left join members m on m.person_id = p.id
+    left join teams t on t.id = m.team_id) x), '[]'::json);
+end $$;
+
+-- one chat as saved here (the panel shows WATI's full chat when it can, this when it can't)
+create or replace function admin_wa_chat(p_phone text) returns json
+language plpgsql stable security definer set search_path = public as $$
+declare ph text := regexp_replace(coalesce(p_phone, ''), '\D', '', 'g');
+begin
+  perform bd_admin_only();
+  return coalesce((select json_agg(json_build_object('at', w.at, 'text', w.body, 'kind', w.kind, 'mine', w.mine, 'who', w.sent_by) order by w.at)
+    from (select * from wa_inbox where phone = ph order by at desc limit 200) w), '[]'::json);
+end $$;
+revoke execute on function admin_wa_inbox(int), admin_wa_chat(text) from public, anon;
+grant execute on function admin_wa_inbox(int), admin_wa_chat(text) to authenticated;

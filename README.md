@@ -193,6 +193,14 @@ Open `https://rajnishpark03.github.io/tutedude-hackathon/admin.html`. It isn't l
 - **Problem statement:** write it, see a preview and save. Students see it at 21 Nov, 7:15 PM, with no SQL needed.
 - **Notify:** send a site and phone notification to everyone, people in teams of 2+, people alone in their team, people not in a team, or one team. The panel shows how many people will get it before you send.
 - **Activity:** recent creations, joins, leaves, removals, renames and moves.
+- **WhatsApp:** what people send to the Buildathon WhatsApp number, newest first, refreshed every 10 seconds (a toast shows each new message, and the tab shows how many chats are waiting for an answer). Each chat shows the person's registration and team. Tap one to read the whole chat from WATI (our messages to everyone, the WATI bot, their messages) and answer it. WhatsApp delivers a typed answer only within 24 hours of the person's last message; after that, use **Open in WhatsApp**.
+
+**How the WhatsApp tab works.**
+- WATI sends every incoming message to `https://buildathon-notify.vercel.app/api/wati-hook?k=KEY` (`push-server/api/wati-hook.js`), which saves it in `wa_inbox` (supabase.sql). `KEY` is made from `NOTIFY_SECRET`: the first 32 characters of HMAC-SHA256(`NOTIFY_SECRET`, `"wati-hook"`) in hex.
+- **One-time setup in WATI:** Connectors → Webhooks → Add Webhook → paste that address, status **Enabled**, event **Message Received**, Save. (Our WATI API key can't add webhooks itself: it lacks the `webhooks` scope.)
+- Reading a chat and answering go through `push-server/api/wa-admin.js`, which checks the organiser's sign-in (`admin_whoami`). The WATI token stays on the notify server.
+- To catch up on replies that came before the webhook was set: `whatsapp-replies` with `store: true` (it saves what it finds in `wa_inbox`).
+- The notify server deploys with the Vercel CLI: `cd push-server && vercel deploy --prod`.
 
 ## Publish the problem statement
 Easiest: the **Problem statement** tab in the organiser panel. Or run this in the SQL Editor any time before 7:15 PM on 21 Nov. Students see it on their team page from 7:15 PM, and a notification goes out at 7:15 PM.

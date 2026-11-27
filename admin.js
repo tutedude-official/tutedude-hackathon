@@ -78,6 +78,7 @@
     $("#admWho").hidden = false;
     view("#admApp");
     showTab(S.tab);
+    if (S.tab !== "wa") loadWa();   // keeps the WhatsApp tab's count of chats waiting for an answer up to date
   }
   $("#loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -98,8 +99,11 @@
   async function signOut() {
     try { await sb.auth.signOut(); } catch (_) {}
     // drop every phone number and email that was on the page
-    ["#teamList", "#ovBody", "#actList", "#moveList", "#probPreview", "#teamCount", "#nCount"].forEach((s) => { const el = $(s); if (el) el.innerHTML = ""; });
-    ["#teamSearch", "#pText", "#pLink", "#nTitle", "#nBody", "#lPass", "#moveSearch"].forEach((s) => { const el = $(s); if (el) el.value = ""; });
+    clearTimeout(waListTimer); clearTimeout(waChatTimer);
+    if (waDlg.open) waDlg.close();
+    WA.list = []; WA.seen = 0;
+    ["#teamList", "#ovBody", "#actList", "#moveList", "#probPreview", "#teamCount", "#nCount", "#waList", "#waChat", "#waCount"].forEach((s) => { const el = $(s); if (el) el.innerHTML = ""; });
+    ["#teamSearch", "#pText", "#pLink", "#nTitle", "#nBody", "#lPass", "#moveSearch", "#waSearch", "#waText"].forEach((s) => { const el = $(s); if (el) el.value = ""; });
     Object.assign(S, { teams: [], total: 0, offset: 0, notifyTeam: null, moving: null, search: "" });
     $("#admEmail").textContent = "";
     $("#admWho").hidden = true;
@@ -131,7 +135,7 @@
     S.tab = tab;
     $$(".adm-tabs .tab").forEach((b) => { const on = b.dataset.tab === tab; b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on)); });
     $$(".adm-pane").forEach((p) => { p.hidden = p.id !== "pane-" + tab; });
-    ({ overview: loadOverview, teams: () => { loadTeams(true); loadLate(); }, problem: loadProblem, notify: () => { countAudience(); loadWhatsapp(); loadMerge(); }, subs: loadSubs, activity: loadActivity }[tab] || (() => {}))();
+    ({ overview: loadOverview, teams: () => { loadTeams(true); loadLate(); }, problem: loadProblem, notify: () => { countAudience(); loadWhatsapp(); loadMerge(); }, subs: loadSubs, activity: loadActivity, wa: loadWa }[tab] || (() => {}))();
   }
 
   /* ---------- overview ---------- */
@@ -546,6 +550,133 @@
       : `<li class="muted">Nothing yet.</li>`;
   }
 
+  /* ---------- WhatsApp replies (live) ----------
+     WATI sends every message people write to the Buildathon number to the notify server, which saves it
+     (wa_inbox in supabase.sql). The list comes from the database; one chat in full, and answers, go through
+     the notify server (push-server/api/wa-admin.js), which checks that this is an organiser. */
+  const NOTIFY = "https://buildathon-notify.vercel.app";
+  const waDlg = $("#waDlg");
+  const WA = { list: [], filter: "all", open: null, seen: 0 };
+  let waListTimer = 0, waChatTimer = 0;
+  const ago = (t) => {
+    const s = Math.max(0, (Date.now() - Date.parse(t)) / 1000);
+    return s < 60 ? "just now" : s < 3600 ? Math.floor(s / 60) + " min ago" : s < 86400 ? Math.floor(s / 3600) + " h ago" : fmt(t);
+  };
+  const waWaiting = (c) => !c.lastMine;
+  const waName = (c) => c.name || c.waName || "+" + c.phone;
+  const waText = (body, kind) => body ? body : `[${kind && kind !== "text" ? kind : "message"}]`;
+  async function waApi(body) {
+    const { data } = await sb.auth.getSession();
+    const tok = data && data.session && data.session.access_token;
+    if (!tok) throw new Error("Your sign-in expired. Sign in again.");
+    const r = await fetch(NOTIFY + "/api/wa-admin", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error || `The WhatsApp server answered ${r.status}.`);
+    return j;
+  }
+  async function loadWa() {
+    clearTimeout(waListTimer);
+    if ($("#admApp").hidden) return;
+    try {
+      const list = await rpc("admin_wa_inbox", { p_limit: 300 });
+      const newest = Math.max(0, ...list.filter((c) => c.lastIn).map((c) => Date.parse(c.lastIn)));
+      if (WA.seen && newest > WA.seen) {
+        const c = list.find((x) => x.lastIn && Date.parse(x.lastIn) === newest);
+        if (c) toast(`New WhatsApp message from ${waName(c)}: ${waText(c.last, c.lastKind).slice(0, 80)}`);
+      }
+      WA.seen = Math.max(WA.seen, newest);
+      WA.list = list;
+      $("#waLive").classList.remove("off");
+      $("#waLive").textContent = "Live";
+      drawWa();
+    } catch (e) {
+      $("#waLive").classList.add("off");
+      $("#waLive").textContent = "Offline";
+      if (!WA.list.length) $("#waList").innerHTML = `<li class="muted">${esc(e.message)}</li>`;
+    }
+    waListTimer = setTimeout(loadWa, S.tab === "wa" && !document.hidden ? 10000 : 30000);
+  }
+  function drawWa() {
+    const all = WA.list || [];
+    const waiting = all.filter(waWaiting).length;
+    $("#waBadge").textContent = waiting;
+    $("#waBadge").hidden = !waiting;
+    const q = $("#waSearch").value.trim().toLowerCase(), qd = q.replace(/\D/g, "");
+    const rows = all.map((c, i) => ({ c, i })).filter(({ c }) => (WA.filter !== "open" || waWaiting(c))
+      && (!q || [c.name, c.waName, c.team, c.last, c.email].some((v) => String(v || "").toLowerCase().includes(q)) || (qd.length >= 4 && c.phone.includes(qd))));
+    $("#waCount").textContent = all.length ? `${num(all.length)} ${all.length === 1 ? "person" : "people"} wrote · ${num(waiting)} waiting for an answer`
+      + (rows.length !== all.length ? ` · showing ${num(rows.length)}` : "") : "";
+    $("#waList").innerHTML = rows.length ? rows.map(({ c, i }) => `<li><button type="button" class="adm-chat-row${waWaiting(c) ? " waiting" : ""}" data-act="wa-open" data-i="${i}">
+        <span class="top"><b>${esc(waName(c))}</b>${c.team ? `<span class="tm">${esc(c.team)}</span>` : `<span class="tm none">${c.name ? "No team" : "Not registered"}</span>`}<time datetime="${esc(c.lastAt)}">${esc(ago(c.lastAt))}</time></span>
+        <span class="msg">${c.lastMine ? "<i>You:</i> " : ""}${esc(waText(c.last, c.lastKind))}</span>
+        <span class="sub">+${esc(c.phone)} · ${num(c.incoming)} message${Number(c.incoming) === 1 ? "" : "s"} from them${waWaiting(c) ? ' · <b class="wait">Waiting for an answer</b>' : ""}</span>
+      </button></li>`).join("")
+      : `<li class="muted">${all.length ? "No chat matches." : "No replies yet. New WhatsApp messages show up here by themselves."}</li>`;
+  }
+  $("#waSearch").addEventListener("input", drawWa);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && S.tab === "wa" && !$("#admApp").hidden) loadWa(); });
+
+  function openWa(c) {
+    WA.open = c;
+    $("#waTitle").textContent = waName(c);
+    $("#waMeta").innerHTML = ["+" + esc(c.phone) + (c.waName && c.name && c.waName !== c.name ? ` (on WhatsApp: ${esc(c.waName)})` : ""),
+      c.team ? `Team <b>${esc(c.team)}</b>, ${num(c.teamSize)} ${Number(c.teamSize) === 1 ? "person" : "people"}${c.submitted ? ", submitted" : ""}` : (c.name ? "Not in a team" : "Not registered on the site"),
+      esc(c.email || "")].filter(Boolean).join(" · ");
+    $("#waOpenWa").href = "https://wa.me/" + waNum(c.phone);
+    $("#waText").value = "";
+    showErr("#waErr", "");
+    $("#waWindow").textContent = "";
+    $("#waChat").innerHTML = `<p class="muted">Loading the chat…</p>`;
+    if (!waDlg.open) waDlg.showModal();
+    loadChat(true);
+  }
+  async function loadChat(first) {
+    clearTimeout(waChatTimer);
+    const c = WA.open;
+    if (!c || !waDlg.open) return;
+    let msgs, full = true;
+    try { msgs = (await waApi({ action: "history", phone: c.phone })).messages || []; }
+    catch (e) { full = false; try { msgs = await rpc("admin_wa_chat", { p_phone: c.phone }); } catch (_) { msgs = []; } }
+    if (WA.open !== c || !waDlg.open) return;
+    drawChat(msgs, full, first);
+    waChatTimer = setTimeout(() => loadChat(false), 10000);
+  }
+  function drawChat(msgs, full, first) {
+    const box = $("#waChat");
+    const atEnd = first || box.scrollTop + box.clientHeight >= box.scrollHeight - 40;
+    box.innerHTML = (full ? "" : `<p class="form-note">WATI didn't answer, so this shows only what was saved here.</p>`)
+      + (msgs.length ? msgs.map((m) => `<div class="bub ${m.mine ? "bub-out" : "bub-in"}${m.kind === "broadcast" ? " bub-bc" : ""}">`
+        + (m.kind === "broadcast" ? `<small class="bub-tag">Message to everyone</small>` : "")
+        + `<p>${m.text ? linkify(m.text) : `<i>${esc(waText("", m.kind))}</i>`}</p>`
+        + `<time>${esc(fmt(m.at))}${m.mine && m.who ? " · " + esc(m.who) : ""}</time></div>`).join("")
+        : `<p class="muted">No messages yet.</p>`);
+    if (atEnd) box.scrollTop = box.scrollHeight;
+    // WhatsApp delivers a typed answer only within 24 hours of their last message
+    const lastIn = Math.max(0, ...msgs.filter((m) => !m.mine).map((m) => Date.parse(m.at) || 0));
+    const until = lastIn + 24 * 3600e3, open = lastIn > 0 && Date.now() < until;
+    $("#waSendBtn").disabled = !open;
+    $("#waWindow").textContent = open ? `You can answer here until ${fmt(until)}. WhatsApp allows typed answers for 24 hours after their last message.`
+      : "WhatsApp won't deliver a typed answer: their last message is more than 24 hours old. Use Open in WhatsApp instead.";
+  }
+  waDlg.addEventListener("click", (e) => { if (e.target === waDlg || e.target.closest("[data-close]")) waDlg.close(); });
+  waDlg.addEventListener("close", () => { WA.open = null; clearTimeout(waChatTimer); });
+  $("#waText").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#waForm").requestSubmit(); } });
+  $("#waForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const c = WA.open, text = $("#waText").value.trim();
+    if (!c) return;
+    if (!text) { showErr("#waErr", "Type a message first."); return; }
+    showErr("#waErr", "");
+    busy($("#waSendBtn"), async () => {
+      try { await waApi({ action: "send", phone: c.phone, text }); }
+      catch (err) { showErr("#waErr", err.message); return; }
+      $("#waText").value = "";
+      toast(`Sent to ${waName(c)} on WhatsApp.`);
+      loadChat(false);
+      loadWa();
+    });
+  });
+
   /* ---------- clicks ---------- */
   document.addEventListener("click", (e) => {
     const tab = e.target.closest(".adm-tabs [data-tab]");
@@ -558,6 +689,11 @@
       case "change-pw": showErr("#pwErr", ""); pwDlg.showModal(); $("#pw1").focus(); return;
       case "reload": return showTab(S.tab);
       case "more": return loadTeams(false);
+      case "wa-filter":
+        WA.filter = d.f;
+        $$("[data-act=wa-filter]").forEach((x) => x.classList.toggle("on", x === b));
+        return drawWa();
+      case "wa-open": { const c = WA.list[Number(d.i)]; if (c) openWa(c); return; }
       case "export": return exportCsv(b);
       case "sub-export": return exportSubs(b);
       case "sub-delete":
