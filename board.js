@@ -289,13 +289,13 @@
         if (submitEarly()) fail("Submissions open on " + submitDayText() + ".");
         if (!submitOpen()) fail("Submissions are closed.");
         if (sizeOf(t.id) < MIN) fail(`A team needs at least ${MIN} people to take part.`);
-        if (t.submission) fail("Your team has already submitted. It can't be changed.");
+        if (t.submission && (t.submission.drive || !p.drive)) fail("Your team has already submitted. It can't be changed.");
         if (title.length < 2 || title.length > 80) fail("Give your project a name (2 to 80 characters).");
         if (summary.length < 20 || summary.length > 500) fail("Describe your project in 2 to 3 lines (20 to 500 characters).");
-        if (!urlOk(p.product)) fail("Paste the full link to your project (it starts with https://).");
-        if (p.site && !urlOk(p.site)) fail("The website link doesn't look right. Paste the full link, or leave it empty.");
-        if (p.video && !urlOk(p.video)) fail("The video link doesn't look right. Paste the full link, or leave it empty.");
-        t.submission = { title, summary, product: p.product, site: p.site || "", video: p.video || "", at: now(), by: db.people[uid].name };
+        if (!p.drive) fail("Refresh this page and submit again: the submit form now asks for your Google Drive folder, landing page, explainer video and Instagram links.");
+        if (![p.product, p.site, p.video, p.drive, p.instagram].every(urlOk)) fail("Paste the full links (they start with https://).");
+        t.submission = { title, summary, product: p.product, site: p.site, video: p.video, drive: p.drive, github: p.github || "", instagram: p.instagram,
+          x: p.x || "", posts: (p.posts || []).join("\n"), at: now(), by: db.people[uid].name };
         say(t.id, `${first(db.people[uid].name)} submitted the project: ${title}`);
         return { ok: true };
       },
@@ -606,7 +606,8 @@
       setCap: (k) => rpc("set_team_cap", { p_cap: Number(k) }),
       addTeammate: (name, email, phone) => rpc("add_teammate", { p_name: name, p_email: email, p_phone: phone || "" }),
       checkStudent: async (email) => { const r = await rpc("check_student", { p_email: email }); return r ? r.student : null; },
-      submitProject: (p) => rpc("submit_project", { p_title: p.title, p_summary: p.summary, p_product: p.product, p_site: p.site || "", p_video: p.video || "" }),
+      submitProject: (p) => rpc("submit_project", { p_title: p.title, p_summary: p.summary, p_product: p.product, p_site: p.site || "", p_video: p.video || "",
+        p_drive: p.drive || "", p_github: p.github || "", p_instagram: p.instagram || "", p_x: p.x || "", p_posts: (p.posts || []).join("\n") }),
       removeTeammate: (lid) => rpc("remove_teammate", { p_id: lid }),
       saveProfile: (p) => withLiveAccount(() => rpc("save_profile", { p_name: p.name, p_domain: p.domain, p_phone: p.phone, p_email: p.email, p_skill: p.skill, p_link: p.link,
         p_team_name: p.teamName || "", p_code: p.code || "", p_team: p.teamId || null, p_open: !!p.open, p_consent: !!p.consent, p_session_ok: !!p.sessionOk,
@@ -969,7 +970,7 @@
     $$(".cta-watch").forEach((b) => { b.hidden = !FV || lk || !!(S.team && teamSize(S.team) >= MIN); });
     // while submissions are open, "Submit project" takes the place of Register / My team in the header and the menu
     // (until the team has submitted)
-    const subNav = submitOpen() && !(S.team && S.team.submission);
+    const subNav = submitOpen() && !(S.team && S.team.submission && S.team.submission.drive);
     $$("[data-submit-btn]").forEach((b) => { b.hidden = !subNav; });
     $$("[data-reg-btn]").forEach((b) => { b.hidden = subNav; });
     const eb = $("#heroEyebrow");
@@ -1120,15 +1121,20 @@
       const link = (u, label) => (u ? `<a class="btn btn-sm btn-ghost" href="${esc(safeUrl(u))}" target="_blank" rel="noopener">${label} ↗</a>` : "");
       return `<div class="submit-card done"><p class="kicker">${ic("check")} Project submitted</p>
         <h4>${esc(s.title)}</h4><p class="sub-sum">${esc(s.summary)}</p>
-        <span class="row-btns">${link(s.product, "Project")}${link(s.site, "Website")}${link(s.video, "Promo video")}</span>
-        <p class="small muted">Submitted${s.by ? ` by ${esc(s.by)}` : ""} ${esc(istText(s.at, ""))}. A submission can't be changed.</p></div>`;
+        <span class="row-btns">${link(s.product, s.drive ? "Live product" : "Project")}${link(s.site, s.drive ? "Landing page" : "Website")}${link(s.video, s.drive ? "Explainer video" : "Promo video")}${link(s.drive, "Drive folder")}${link(s.github, "GitHub")}${link(s.instagram, "Instagram")}${link(s.x, "X")}</span>
+        ${s.posts ? `<p class="small muted">${s.posts.split("\n").filter(Boolean).length} post links</p>` : ""}
+        <p class="small muted">Submitted${s.by ? ` by ${esc(s.by)}` : ""} ${esc(istText(s.at, ""))}.${s.drive ? " A submission can't be changed." : ""}</p></div>`
+        // submitted with the old form (before 28 Nov): complete it once with what the problem statement asks for
+        + (!s.drive && submitOpen() ? `<div class="submit-card"><p class="kicker">${ic("rocket")} Complete your submission</p>
+          <p>The submission now follows the problem statement's checklist. Add your <b>Google Drive folder</b> with all your files (documentation, brand kit, launch film, code, screenshot of your most-liked post, tools used), your <b>landing page</b>, <b>explainer video</b> and <b>Instagram</b> links before <b>${esc(submitByText())}</b>. What you submitted is already filled in. You can do this once.</p>
+          <span class="row-btns"><button class="btn btn-sm" type="button" data-act="submit-open">Complete your submission</button></span></div>` : "");
     }
     if (submitEarly()) return `<div class="submit-card soon"><p class="kicker">${ic("calendar")} Submission day: ${esc(submitDayText())}</p>
-      <p>Build your project this week. On <b>${esc(submitDayText())}</b> anyone in your team can submit it here: project link, website, promo video and a short description.
+      <p>Build your project this week. On <b>${esc(submitDayText())}</b> anyone in your team can submit it here: live product, landing page, explainer video, a Google Drive folder with all your files, and your Instagram.
         Submissions are open on that day only, until <b>${esc(submitTimeText())}</b>.</p></div>`;
     if (!submitOpen()) return `<div class="submit-card closed"><p class="kicker">${ic("lock")} Submissions are closed</p><p>Your team didn't submit a project before ${esc(submitByText())}.</p></div>`;
     return `<div class="submit-card"><p class="kicker">${ic("rocket")} Submit your project</p>
-      <p>Submissions are open. Anyone in your team can submit the project here as soon as it's ready: project link, website, promo video and a short description.
+      <p>Submissions are open. Anyone in your team can submit the project here as soon as it's ready: live product, landing page, explainer video, a Google Drive folder with all your files (documentation, brand kit, launch film, code, screenshot of your most-liked post, tools used), and your Instagram.
         You don't have to wait for the last day: it closes at <b>${esc(submitByText())}</b>. Your team submits once and it can't be changed, so agree with your team on who submits.</p>
       <span class="row-btns"><button class="btn btn-sm" type="button" data-act="submit-open">Submit project</button></span></div>`;
   }
@@ -1988,17 +1994,23 @@
     const toBoard = () => $("#board").scrollIntoView({ behavior: "smooth" });
     if (!S.me) { openReclaim(); return; }   // registered on another phone or browser: get back to the team first
     if (!S.team) { toBoard(); toast("Join a team to submit a project.", true); return; }
-    if (S.team.submission) { toBoard(); toast("Your team has already submitted its project."); return; }
+    if (S.team.submission && S.team.submission.drive) { toBoard(); toast("Your team has already submitted its project."); return; }
     if (teamSize(S.team) < MIN) { toBoard(); toast(`A team needs at least ${MIN} people to submit.`, true); return; }
     openSubmit();
   }
 
   /* ---------- anyone in the team submits the project (once per team) ---------- */
   function openSubmit() {
-    if (!S.team || S.team.submission) return;
+    const old = S.team && S.team.submission;
+    if (!S.team || (old && old.drive)) return;
     if (submitEarly()) { toast("Submissions open on " + submitDayText() + ".", true); return; }
     if (!submitOpen()) { toast("Submissions are closed.", true); return; }
     clearBad(subDlg);
+    // completing an old-form submission: what the team sent is already filled in
+    if (old) [["#sTitle", old.title], ["#sSummary", old.summary], ["#sProduct", old.product], ["#sSite", old.site], ["#sVideo", old.video]]
+      .forEach(([sel, v]) => { if (v && !$(sel).value) $(sel).value = v; });
+    $("#subTitle").textContent = old ? "Complete your submission" : "Submit your project";
+    $("#subSubmit").textContent = old ? "Complete submission" : "Submit project";
     $("#subKicker").textContent = "Submit by " + submitByText();
     $("#subUntil").textContent = submitByText();
     $("#sSure").checked = false;
@@ -2010,8 +2022,8 @@
   // Sites), GitHub and YouTube (push-server/api/link-check.js). Other links aren't checked. When the check can't
   // run or gets no clear answer, the submission goes through: a busy service never blocks a team.
   const LINK_CHECK = "https://buildathon-notify.vercel.app/api/link-check";
-  const LINK_FIELDS = { product: "#sProduct", site: "#sSite", video: "#sVideo" };
-  const LINK_NAMES = { product: "project link", site: "website link", video: "promo video link" };
+  const LINK_FIELDS = { product: "#sProduct", site: "#sSite", video: "#sVideo", drive: "#sDrive", github: "#sGithub" };
+  const LINK_NAMES = { product: "live product link", site: "landing page link", video: "explainer video", drive: "Google Drive folder", github: "GitHub repo" };
   async function closedLinks(p) {
     const keys = Object.keys(LINK_FIELDS).filter((k) => p[k]);
     let res = [];
@@ -2036,37 +2048,48 @@
   async function submitProjectForm(e) {
     e.preventDefault();
     const fix = (v) => { v = clean(v); return v && !/^https?:\/\//i.test(v) && /^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(v) ? "https://" + v : v; };
-    const p = { title: clean($("#sTitle").value), summary: clean($("#sSummary").value), product: fix($("#sProduct").value), site: fix($("#sSite").value), video: fix($("#sVideo").value) };
-    if (p.title.length < 2) return showErr("#subErr", "Give your project a name.");
-    if (p.summary.length < 20) return showErr("#subErr", "Describe your project in 2 to 3 lines.");
-    if (!urlOk(p.product)) return showErr("#subErr", "Paste the full link to your project (it starts with https://).");
-    if (p.site && !urlOk(p.site)) return showErr("#subErr", "The website link doesn't look right. Paste the full link, or leave it empty.");
-    if (p.video && !urlOk(p.video)) return showErr("#subErr", "The video link doesn't look right. Paste the full link, or leave it empty.");
+    const p = { title: clean($("#sTitle").value), summary: clean($("#sSummary").value), product: fix($("#sProduct").value), site: fix($("#sSite").value),
+      video: fix($("#sVideo").value), drive: fix($("#sDrive").value), github: fix($("#sGithub").value), instagram: fix($("#sInsta").value), x: fix($("#sX").value),
+      posts: $("#sPosts").value.split(/[\s,]+/).map(fix).filter(Boolean) };
+    clearBad(subDlg);
+    const bad = (sel, msg) => { const i = $(sel); i.classList.add("is-bad"); i.setAttribute("aria-invalid", "true"); i.focus(); showErr("#subErr", msg); };
+    if (p.title.length < 2) return bad("#sTitle", "Give your project a name.");
+    if (p.summary.length < 20) return bad("#sSummary", "Describe your project in 2 to 3 lines.");
+    if (!urlOk(p.product)) return bad("#sProduct", "Paste the full link to your live product (it starts with https://).");
+    if (!urlOk(p.site)) return bad("#sSite", "Paste the full link to your landing page. If it's part of your product's site, paste the same link.");
+    if (!urlOk(p.video)) return bad("#sVideo", "Paste the link to your explainer video (YouTube or Google Drive).");
+    if (!urlOk(p.drive) || !/^https:\/\/(drive|docs)\.google\.com\//i.test(p.drive)) return bad("#sDrive", "Paste the link to your Google Drive folder with all your files (it starts with https://drive.google.com/).");
+    if (!urlOk(p.instagram) || !/^https?:\/\/(www\.)?instagram\.com\//i.test(p.instagram)) return bad("#sInsta", "Paste your project's Instagram account link (https://instagram.com/…).");
+    if (p.x && (!urlOk(p.x) || !/^https?:\/\/(www\.|mobile\.)?(x|twitter)\.com\//i.test(p.x))) return bad("#sX", "The X link doesn't look right (https://x.com/…). Fix it, or leave it empty.");
+    if (p.github && (!urlOk(p.github) || !/^https?:\/\/(www\.)?github\.com\//i.test(p.github))) return bad("#sGithub", "The GitHub link doesn't look right (https://github.com/…). Fix it, or leave it empty.");
+    const badPost = p.posts.find((u) => !urlOk(u));
+    if (badPost) return bad("#sPosts", `This post link doesn't look right: ${badPost.slice(0, 60)}. Paste full links, one per line.`);
+    if (p.posts.length > 30) return bad("#sPosts", "Add at most 30 post links.");
     if (!$("#sSure").checked) return showErr("#subErr", "Tick the box: a submission can't be changed.");
     const btn = $("#subSubmit");
     // the judges must be able to open every link: no private Google file, GitHub repo or YouTube video
-    clearBad(subDlg);
     showErr("#subErr", "");
     btn.disabled = true;
     btn.textContent = "Checking your links…";
     const closed = await closedLinks(p);
+    const completing = !!(S.team && S.team.submission);
     btn.disabled = false;
-    btn.textContent = "Submit project";
+    btn.textContent = completing ? "Complete submission" : "Submit project";
     if (closed.length) {
       closed.forEach((c) => { const i = $(LINK_FIELDS[c.key]); i.classList.add("is-bad"); i.setAttribute("aria-invalid", "true"); });
       $(LINK_FIELDS[closed[0].key]).focus();
       return showErr("#subErr", closed.map((c) => c.text).join("\n\n"));
     }
     // one last check: a submission is final, and there is time until the deadline
-    const missing = [!p.site && "website link", !p.video && "promo video link"].filter(Boolean);
-    if (!confirm(`Are you sure you've finished building your app or website?\n\nYou can submit only once, and it can't be changed afterwards. You still have time until ${submitByText()}.`
-      + (missing.length ? `\n\nYou haven't added the ${missing.join(" or the ")}, and you can't add it later.` : "") + "\n\nSubmit now?")) return;
+    const missing = [!p.github && "GitHub link", !p.x && "X link", !p.posts.length && "links to your posts"].filter(Boolean);
+    if (!confirm(`Is everything in your Google Drive folder, and does every link open for anyone?\n\nYou can submit only once, and it can't be changed afterwards. You still have time until ${submitByText()}.`
+      + (missing.length ? `\n\nYou haven't added: ${missing.join(", ")}. You can't add them later.` : "") + "\n\nSubmit now?")) return;
     btn.disabled = true;
     try {
       await whenReady();
       await S.be.submitProject(p);
       closeDlg(subDlg);
-      toast("Project submitted. All the best!");
+      toast(completing ? "Submission completed. All the best!" : "Project submitted. All the best!");
       await refresh();
     } catch (err) {
       showErr("#subErr", (err && err.message) || "Couldn't submit. Try again.");

@@ -148,6 +148,14 @@ create table if not exists submissions (
   submitted_by uuid,
   created_at timestamptz not null default now()
 );
+-- 28 Nov: the form follows the problem statement's submission checklist. product_url = live product, site_url =
+-- landing page, video_url = explainer video; drive_url = one Google Drive folder with every file; posts = links to
+-- the team's social posts, one per line.
+alter table submissions add column if not exists drive_url text not null default '';
+alter table submissions add column if not exists github_url text not null default '';
+alter table submissions add column if not exists instagram_url text not null default '';
+alter table submissions add column if not exists x_url text not null default '';
+alter table submissions add column if not exists posts text not null default '';
 create index if not exists people_phone_full_idx on people (phone);
 create index if not exists people_created_idx on people (created_at);
 create index if not exists team_listed_created_idx on team_listed (created_at);
@@ -550,6 +558,7 @@ begin
                      'link', coalesce((select value from bd_settings where key = 'problem_link'), '')) end,
         -- the project someone in the team submitted (null until then), and who submitted it
         'submission', (select json_build_object('title', s.title, 'summary', s.summary, 'product', s.product_url, 'site', s.site_url, 'video', s.video_url,
+                                                'drive', s.drive_url, 'github', s.github_url, 'instagram', s.instagram_url, 'x', s.x_url, 'posts', s.posts,
                                                 'at', (extract(epoch from s.created_at) * 1000)::bigint,
                                                 'by', (select sp.name from people sp where sp.id = s.submitted_by)) from submissions s where s.team_id = t.id),
         -- teammates' WhatsApp numbers: only for members of this same team
@@ -1155,10 +1164,19 @@ language sql immutable as $$
   select coalesce(u, '') ~ '^https?://[^[:space:]<>"'']+\.[^[:space:]<>"'']+$' and char_length(u) <= 300
 $$;
 -- Anyone in the team submits the team's project: once per team, between the problem statement and the deadline.
-create or replace function submit_project(p_title text, p_summary text, p_product text, p_site text default '', p_video text default '') returns json
+-- What it asks follows the problem statement's checklist: live product, landing page, explainer video, one Google
+-- Drive folder with every file, Instagram (required); GitHub, X and links to posts (optional).
+-- A team that submitted with the old form (no Drive folder) can complete its submission once with the new form.
+-- Until the new form is on the site, the old form keeps working: bd_settings 'submit_form_v2' = 'on' turns that off.
+drop function if exists submit_project(text, text, text, text, text);
+create or replace function submit_project(p_title text, p_summary text, p_product text, p_site text default '', p_video text default '',
+  p_drive text default '', p_github text default '', p_instagram text default '', p_x text default '', p_posts text default '') returns json
 language plpgsql security definer set search_path = public as $$
 declare uid uuid := bd_me(); tid uuid; tsize int; ttl text := bd_clean(p_title); sm text := bd_clean(p_summary);
         pr text := btrim(coalesce(p_product, '')); st text := btrim(coalesce(p_site, '')); vd text := btrim(coalesce(p_video, ''));
+        dr text := btrim(coalesce(p_drive, '')); gh text := btrim(coalesce(p_github, '')); ig text := btrim(coalesce(p_instagram, ''));
+        xx text := btrim(coalesce(p_x, '')); ps text[] := array(select x from regexp_split_to_table(coalesce(p_posts, ''), '[[:space:],]+') x where x <> '');
+        p text; old_drive text; had boolean;
 begin
   perform bd_account_ok(uid);
   perform pg_advisory_xact_lock(7231001);
@@ -1167,14 +1185,43 @@ begin
   if now() < bd_submit_from() then raise exception 'Submissions open on %.', to_char(bd_submit_from() at time zone 'Asia/Kolkata', 'FMDD Mon'); end if;
   if now() > bd_submit_by() then raise exception 'Submissions are closed.'; end if;
   if tsize < bd_min() then raise exception 'A team needs at least % people to take part.', bd_min(); end if;
-  if exists (select 1 from submissions where team_id = tid) then raise exception 'Your team has already submitted. It can''t be changed.'; end if;
+  select drive_url into old_drive from submissions where team_id = tid;
+  had := found;
+  -- submitted already: final, except an old-form submission (no Drive folder), which the new form completes once
+  if had and (old_drive <> '' or dr = '') then raise exception 'Your team has already submitted. It can''t be changed.'; end if;
   if char_length(ttl) not between 2 and 80 then raise exception 'Give your project a name (2 to 80 characters).'; end if;
   if char_length(sm) not between 20 and 500 then raise exception 'Describe your project in 2 to 3 lines (20 to 500 characters).'; end if;
-  if not bd_url_ok(pr) then raise exception 'Paste the full link to your project (it starts with https://).'; end if;
-  if st <> '' and not bd_url_ok(st) then raise exception 'The website link doesn''t look right. Paste the full link, or leave it empty.'; end if;
-  if vd <> '' and not bd_url_ok(vd) then raise exception 'The video link doesn''t look right. Paste the full link, or leave it empty.'; end if;
-  insert into submissions (team_id, title, summary, product_url, site_url, video_url, submitted_by) values (tid, ttl, sm, pr, st, vd, uid);
-  perform bd_say(tid, coalesce(split_part((select name from people where id = uid), ' ', 1), 'Your teammate') || ' submitted the project: ' || ttl);
+  if dr = '' then
+    -- the old form (no Drive folder): until the new form is on the site it still works; after that, whoever still
+    -- has the old page open is told to refresh
+    if coalesce((select value from bd_settings where key = 'submit_form_v2'), '') = 'on' then
+      raise exception 'Refresh this page and submit again: the submit form now asks for your Google Drive folder, landing page, explainer video and Instagram links.';
+    end if;
+    if not bd_url_ok(pr) then raise exception 'Paste the full link to your project (it starts with https://).'; end if;
+    if st <> '' and not bd_url_ok(st) then raise exception 'The website link doesn''t look right. Paste the full link, or leave it empty.'; end if;
+    if vd <> '' and not bd_url_ok(vd) then raise exception 'The video link doesn''t look right. Paste the full link, or leave it empty.'; end if;
+    insert into submissions (team_id, title, summary, product_url, site_url, video_url, submitted_by) values (tid, ttl, sm, pr, st, vd, uid);
+    perform bd_say(tid, coalesce(split_part((select name from people where id = uid), ' ', 1), 'Your teammate') || ' submitted the project: ' || ttl);
+    return json_build_object('ok', true);
+  end if;
+  if not bd_url_ok(pr) then raise exception 'Paste the full link to your live product (it starts with https://).'; end if;
+  if not bd_url_ok(st) then raise exception 'Paste the full link to your landing page (it starts with https://).'; end if;
+  if not bd_url_ok(vd) then raise exception 'Paste the full link to your explainer video (it starts with https://).'; end if;
+  if not bd_url_ok(dr) then raise exception 'Paste the full link to your Google Drive folder (it starts with https://).'; end if;
+  if not bd_url_ok(ig) then raise exception 'Paste the full link to your project''s Instagram account (it starts with https://).'; end if;
+  if gh <> '' and not bd_url_ok(gh) then raise exception 'The GitHub link doesn''t look right. Paste the full link, or leave it empty.'; end if;
+  if xx <> '' and not bd_url_ok(xx) then raise exception 'The X link doesn''t look right. Paste the full link, or leave it empty.'; end if;
+  if cardinality(ps) > 30 then raise exception 'Add at most 30 post links.'; end if;
+  foreach p in array ps loop
+    if not bd_url_ok(p) then raise exception 'This post link doesn''t look right: %. Paste full links, one per line.', left(p, 60); end if;
+  end loop;
+  insert into submissions (team_id, title, summary, product_url, site_url, video_url, drive_url, github_url, instagram_url, x_url, posts, submitted_by)
+  values (tid, ttl, sm, pr, st, vd, dr, gh, ig, xx, array_to_string(ps, E'\n'), uid)
+  on conflict (team_id) do update set title = excluded.title, summary = excluded.summary, product_url = excluded.product_url, site_url = excluded.site_url,
+    video_url = excluded.video_url, drive_url = excluded.drive_url, github_url = excluded.github_url, instagram_url = excluded.instagram_url,
+    x_url = excluded.x_url, posts = excluded.posts, submitted_by = excluded.submitted_by;
+  perform bd_say(tid, coalesce(split_part((select name from people where id = uid), ' ', 1), 'Your teammate')
+    || case when had then ' completed the project submission: ' else ' submitted the project: ' end || ttl);
   return json_build_object('ok', true);
 end $$;
 
@@ -1183,8 +1230,8 @@ revoke execute on function bd_me(), bd_open(), bd_notify(uuid, text, text, text)
   bd_say(uuid, text), bd_send_push(), bd_team_counts(), bd_broadcast_note(), bd_remind(text), bd_before_person_delete(),
   bd_account_ok(uuid), bd_new_code(), bd_take_out(uuid), bd_move(uuid), bd_person_skill(),
   bd_tutedude_api(text), bd_is_student(text) from public, anon, authenticated;   -- nobody can use our server to look up emails
-revoke execute on function submit_project(text, text, text, text, text) from public, anon;
-grant execute on function submit_project(text, text, text, text, text) to authenticated;
+revoke execute on function submit_project(text, text, text, text, text, text, text, text, text, text) from public, anon;
+grant execute on function submit_project(text, text, text, text, text, text, text, text, text, text) to authenticated;
 
 -- "Surprise me" (team name ideas): which of these names does a team already have? The site only offers the free ones.
 -- It tells nothing new: creating a team with a taken name already answers "That team name is taken".
@@ -1567,6 +1614,7 @@ begin
       'leader', p.name, 'leaderWhatsapp', p.phone, 'leaderEmail', p.email,
       'submittedBy', sp.name, 'submittedByWhatsapp', sp.phone, 'submittedByEmail', sp.email,
       'title', s.title, 'summary', s.summary, 'projectLink', s.product_url, 'websiteLink', s.site_url, 'videoLink', s.video_url,
+      'driveLink', s.drive_url, 'githubLink', s.github_url, 'instagramLink', s.instagram_url, 'xLink', s.x_url, 'postLinks', s.posts,
       'submittedAt', s.created_at) order by s.created_at)
     from submissions s join teams t on t.id = s.team_id left join people p on p.id = t.leader_id left join people sp on sp.id = s.submitted_by), '[]'::json);
 end $$;
@@ -1802,6 +1850,7 @@ language sql immutable as $$
          ('whatsapp_doubt_last', '“Doubt-clearing session is live, join now” (23 Nov)'),
          ('whatsapp_switch_last', '“How to change team / join a team” (23 Nov)'),
          ('whatsapp_motivate_last', '“Prizes, certificates, and learn to build a product: start building” (25 Nov)'),
+         ('whatsapp_complete_last', '“Complete your submission: Drive folder, landing page, explainer video, Instagram” (28 Nov)'),
          ('whatsapp_problem_last', 'The problem statement'), ('whatsapp_last', 'Latest WhatsApp reminder / new-team message') $$;
 -- What WATI said about one send: {accepted, failed, done}. pg_net keeps answers for about 6 hours,
 -- so bd_wa_cache() writes the totals into the send itself once every answer is in.

@@ -521,16 +521,17 @@
     S.subs = list;
     $("#subCount").textContent = `(${num(list.length)})`;
     $("#subList").innerHTML = list.length ? list.map((s) => `<div class="adm-card adm-sub">
-        <div class="adm-sub-head"><div><h3>${esc(s.title)}</h3><p class="muted small">${esc(s.team)} · ${num(s.teamSize)} people · leader ${esc(s.leader || "–")}${s.submittedBy && s.submittedBy !== s.leader ? ` · submitted by ${esc(s.submittedBy)}` : ""} · ${esc(fmt(s.submittedAt))}</p></div>
+        <div class="adm-sub-head"><div><h3>${esc(s.title)}</h3><p class="muted small">${esc(s.team)} · ${num(s.teamSize)} people · leader ${esc(s.leader || "–")}${s.submittedBy && s.submittedBy !== s.leader ? ` · submitted by ${esc(s.submittedBy)}` : ""} · ${esc(fmt(s.submittedAt))}${s.driveLink ? "" : ' · <b class="no">old form: no Drive folder yet</b>'}</p></div>
           <button class="btn btn-sm btn-ghost" type="button" data-act="sub-delete" data-id="${esc(s.teamId)}" data-name="${esc(s.team)}">Reopen</button></div>
         <p>${esc(s.summary)}</p>
-        <p class="adm-sub-links">${link(s.projectLink, "Project")}${link(s.websiteLink, "Website")}${link(s.videoLink, "Promo video")}</p>
+        <p class="adm-sub-links">${link(s.projectLink, s.driveLink ? "Live product" : "Project")}${link(s.websiteLink, s.driveLink ? "Landing page" : "Website")}${link(s.videoLink, s.driveLink ? "Explainer video" : "Promo video")}${link(s.driveLink, "Drive folder")}${link(s.githubLink, "GitHub")}${link(s.instagramLink, "Instagram")}${link(s.xLink, "X")}</p>
+        ${s.postLinks ? `<p class="adm-sub-links">${s.postLinks.split("\n").filter(Boolean).map((u, i) => link(u, "Post " + (i + 1))).join("")}</p>` : ""}
       </div>`).join("") : `<p class="muted">No submissions yet.</p>`;
   }
   async function exportSubs(btn) {
     await busy(btn, async () => {
       const rows = await rpc("admin_submissions");
-      const cols = ["team", "teamCode", "teamSize", "leader", "leaderWhatsapp", "leaderEmail", "submittedBy", "submittedByWhatsapp", "submittedByEmail", "title", "summary", "projectLink", "websiteLink", "videoLink", "submittedAt"];
+      const cols = ["team", "teamCode", "teamSize", "leader", "leaderWhatsapp", "leaderEmail", "submittedBy", "submittedByWhatsapp", "submittedByEmail", "title", "summary", "projectLink", "websiteLink", "videoLink", "driveLink", "githubLink", "instagramLink", "xLink", "postLinks", "submittedAt"];
       const cell = (v) => { let s = v == null ? "" : String(v); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
       const csv = "\ufeff" + [cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n");
       const a = document.createElement("a");

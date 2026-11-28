@@ -161,7 +161,7 @@
       <li class="step">
         <span class="num">3</span>
         <h3>Build for 1 week</h3>
-        <p>Build your solution with your team: the product, its website and a short promo video.</p>
+        <p>Build your solution with your team: a working product, landing page, brand kit, launch film and explainer video.</p>
       </li>
       <li class="step">
         <span class="num">4</span>
@@ -254,7 +254,7 @@
       <details><summary>Do my teammates need to register too? <span class="chev" aria-hidden="true"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></span></summary><div class="panel"><p>Yes, and it takes 1 minute. The leader shares the team link, each teammate opens it and joins the team with their own name, WhatsApp number and TuteDude email.</p></div></details>
       <details><summary>I don't have a team. <span class="chev" aria-hidden="true"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></span></summary><div class="panel"><p>Come to a Team Building Session, <span data-tb-when>every morning and evening</span> on TuteDude Sessions, form a team, then register. Or join the Buildathon WhatsApp community, where students without a team find each other: <a class="su-link" data-group href="#" target="_blank" rel="noopener">Join the WhatsApp community ↗</a></p></div></details>
       <details><summary>We registered our team. What now? <span class="chev" aria-hidden="true"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></span></summary><div class="panel"><p>Nothing to build yet. On <span data-build-day>21 Nov, 7:15 PM</span> the problem statement appears on your team page, with what to build. Then you have 1 week to build. Anyone in the team can submit the project on the team page as soon as it's ready, any time until <span data-submit-day data-short>Sat, 28 Nov</span>, 11:59 PM.</p></div></details>
-      <details><summary>What will we build? <span class="chev" aria-hidden="true"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></span></summary><div class="panel"><p>On <span data-build-day>21 Nov, 7:15 PM</span> a real problem appears on your team page. Build a novel solution: the product, its website and a short promo video.</p></div></details>
+      <details><summary>What will we build? <span class="chev" aria-hidden="true"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></span></summary><div class="panel"><p>On <span data-build-day>21 Nov, 7:15 PM</span> a real problem appears on your team page. Build a novel solution: a working product, landing page, brand kit, launch film and explainer video, plus posts on your project's Instagram and X.</p></div></details>
       <details><summary>Can I switch teams? <span class="chev" aria-hidden="true"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></span></summary><div class="panel"><p>Yes. On your team page, tap <b>Leave team</b> (or <b>Remove</b> next to your name) and paste the team link of your new team, or just open that team's link. You move in one step, so you stay in the Buildathon. The new team needs room, and a team that has submitted its project is final.</p></div></details>
       <details><summary>Who can see my WhatsApp number? <span class="chev" aria-hidden="true"><svg class="ic" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg></span></summary><div class="panel"><p>Only your teammates and the organisers. Before you message anyone on WhatsApp you agree to the WhatsApp rules: only about the Buildathon, no spam, no unwanted messages. If someone troubles you, tell the organisers on TuteDude Community and we take action.</p></div></details>
     </div>
@@ -440,22 +440,39 @@
     <form class="form" id="subForm" novalidate>
       <div class="field"><label for="sTitle">Project name</label><input id="sTitle" type="text" maxlength="80" autocomplete="off" placeholder="e.g. StudyBuddy" required></div>
       <div class="field"><label for="sSummary">What did you build? <span class="opt">(2 to 3 lines)</span></label><textarea id="sSummary" rows="3" maxlength="500" placeholder="The problem, and how your product solves it." required></textarea></div>
-      <div class="field"><label for="sProduct">Project link</label><input id="sProduct" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://  (app, GitHub or Drive)" required></div>
+      <p class="sub-sec">Links the judges open</p>
+      <div class="field"><label for="sProduct">Live product link</label><input id="sProduct" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://  (your working app or website)" required>
+        <small>Your working solution. Can't be deployed (hardware, ML model)? Link a working demo video.</small></div>
       <div class="row2">
-        <div class="field"><label for="sSite">Website link</label><input id="sSite" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://"></div>
-        <div class="field"><label for="sVideo">Promo video link</label><input id="sVideo" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://  (YouTube, Drive)"></div>
+        <div class="field"><label for="sSite">Landing page link</label><input id="sSite" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://" required>
+          <small>Same as the live link if it's on your site.</small></div>
+        <div class="field"><label for="sVideo">Explainer video link <span class="opt">(2–3 min)</span></label><input id="sVideo" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://  (YouTube or Drive)" required>
+          <small>Your final presentation, with a demo.</small></div>
       </div>
-      <p class="form-note sub-public">🔓 Every link must open for anyone: Google Docs and Drive set to “Anyone with the link”, a public GitHub repo, a YouTube video that isn't private. We check this when you submit.</p>
-      <div class="sub-check">
-        <p><b>Are you sure your project is ready?</b> Before you submit, check that you have:</p>
-        <ul>
-          <li>A working app or website (designs or mockups alone don't count)</li>
-          <li>Your landing page, brand kit and launch film (60–90 sec)</li>
-          <li>Your explainer video (2–3 min) with a demo of the product</li>
-          <li>Your posts on your project's Instagram and X accounts</li>
-        </ul>
-        <p class="small">Not finished yet? No need to hurry: you can submit any time until <b id="subUntil">Sat, 28 Nov, 11:59 PM</b>.</p>
+
+      <p class="sub-sec">Everything else: one Google Drive folder</p>
+      <div class="field"><label for="sDrive">Google Drive folder link</label><input id="sDrive" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://drive.google.com/drive/folders/…" required>
+        <small>Put all your files in one folder, set to <b>“Anyone with the link”</b>:</small>
+        <ul class="sub-files">
+          <li>Project documentation: problem, research, solution, technical approach, real-world impact</li>
+          <li>Brand kit (PDF or Figma link): name, logo, colours, typography</li>
+          <li>Launch film (60–90 sec)</li>
+          <li>Source code or project files with setup steps (or just the GitHub link below)</li>
+          <li>Screenshot of your most-liked post with its like count</li>
+          <li>Tools and technologies: AI tools, frameworks, libraries, APIs, datasets used</li>
+        </ul></div>
+
+      <p class="sub-sec">Code and social media</p>
+      <div class="row2">
+        <div class="field"><label for="sInsta">Instagram account link</label><input id="sInsta" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://instagram.com/…" required></div>
+        <div class="field"><label for="sX">X account link <span class="opt">(optional)</span></label><input id="sX" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://x.com/…"></div>
       </div>
+      <div class="field"><label for="sGithub">GitHub repo link <span class="opt">(optional)</span></label><input id="sGithub" type="url" inputmode="url" maxlength="300" autocomplete="off" placeholder="https://github.com/…"></div>
+      <div class="field"><label for="sPosts">Links to your posts <span class="opt">(optional, one per line)</span></label><textarea id="sPosts" rows="3" maxlength="4000" placeholder="https://instagram.com/p/…&#10;https://x.com/…/status/…"></textarea>
+        <small>Your Instagram and X posts (at least 5), with #TutedudeBuildathon and #BuildForMyCity.</small></div>
+
+      <p class="form-note sub-public">🔓 Every link must open for anyone: Google Drive and Docs set to “Anyone with the link”, a public GitHub repo, a YouTube video that isn't private. We check this when you submit.</p>
+      <p class="small">Not finished yet? You can submit any time until <b id="subUntil">Sat, 28 Nov, 11:59 PM</b>. Like counts are recorded at the deadline.</p>
       <label class="consent"><input type="checkbox" id="sSure"> <span>Our project is complete, and we checked every link (open for anyone to view). <b>A submission can't be changed.</b></span></label>
       <p class="form-error" id="subErr" role="alert" hidden></p>
       <button type="submit" class="btn btn-full" id="subSubmit">Submit project</button>
